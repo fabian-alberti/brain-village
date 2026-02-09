@@ -25,9 +25,10 @@ export interface User {
 export interface Goal {
   id: string;
   name: string;
-  icon: string; // emoji
+  icon?: string; // deprecated – icons are now vector-based via AppBrandIcon
   type: GoalType;
-  targetApps: string[]; // app names for app-specific goals
+  targetApps: string[]; // individual app names
+  targetCategories: string[]; // selected category IDs
   limit: number; // minutes or open count
   currentProgress: number; // logged today
   xpReward: number;
@@ -54,33 +55,139 @@ export interface DailyLog {
 // For creating new goals (without timestamps)
 export interface NewGoal {
   name: string;
-  icon: string;
+  icon?: string; // deprecated – icons are now vector-based via AppBrandIcon
   type: GoalType;
   targetApps: string[];
+  targetCategories: string[];
   limit: number;
 }
 
-// Common apps list for selection
-export const COMMON_APPS = [
-  { name: 'Instagram', icon: '📸' },
-  { name: 'TikTok', icon: '🎵' },
-  { name: 'Twitter/X', icon: '🐦' },
-  { name: 'Facebook', icon: '👥' },
-  { name: 'YouTube', icon: '📺' },
-  { name: 'Netflix', icon: '🎬' },
-  { name: 'Snapchat', icon: '👻' },
-  { name: 'WhatsApp', icon: '💬' },
-  { name: 'Reddit', icon: '🤖' },
-  { name: 'Pinterest', icon: '📌' },
-  { name: 'LinkedIn', icon: '💼' },
-  { name: 'Discord', icon: '🎮' },
-  { name: 'Twitch', icon: '🟣' },
-  { name: 'Spotify', icon: '🎧' },
-  { name: 'Safari', icon: '🧭' },
-  { name: 'Chrome', icon: '🌐' },
-  { name: 'Games', icon: '🎯' },
-  { name: 'Other', icon: '📱' },
+// ============ APP CATEGORIES ============
+// Icons are handled by components/ui/AppBrandIcon.tsx (vector icons, no emojis)
+
+export interface AppInfo {
+  name: string;
+  urlScheme?: string; // URL scheme to detect if app is installed on device
+}
+
+export interface AppCategory {
+  id: string;
+  name: string;
+  apps: AppInfo[];
+}
+
+export const APP_CATEGORIES: AppCategory[] = [
+  {
+    id: 'social',
+    name: 'Social Media',
+    apps: [
+      { name: 'Instagram', urlScheme: 'instagram://' },
+      { name: 'TikTok', urlScheme: 'tiktok://' },
+      { name: 'Twitter/X', urlScheme: 'twitter://' },
+      { name: 'Facebook', urlScheme: 'fb://' },
+      { name: 'Snapchat', urlScheme: 'snapchat://' },
+      { name: 'LinkedIn', urlScheme: 'linkedin://' },
+      { name: 'Pinterest', urlScheme: 'pinterest://' },
+      { name: 'Reddit', urlScheme: 'reddit://' },
+      { name: 'Threads', urlScheme: 'barcelona://' },
+      { name: 'BeReal', urlScheme: 'bereal://' },
+    ],
+  },
+  {
+    id: 'games',
+    name: 'Games',
+    apps: [
+      { name: 'Roblox', urlScheme: 'robloxmobile://' },
+      { name: 'Minecraft', urlScheme: 'minecraft://' },
+      { name: 'Candy Crush', urlScheme: 'candycrush://' },
+      { name: 'Clash Royale', urlScheme: 'clashroyale://' },
+      { name: 'Among Us', urlScheme: 'amongus://' },
+      { name: 'Brawl Stars', urlScheme: 'brawlstars://' },
+      { name: 'Genshin Impact', urlScheme: 'genshinimpact://' },
+      { name: 'PUBG Mobile', urlScheme: 'pubgmobile://' },
+    ],
+  },
+  {
+    id: 'entertainment',
+    name: 'Entertainment',
+    apps: [
+      { name: 'YouTube', urlScheme: 'youtube://' },
+      { name: 'Netflix', urlScheme: 'nflx://' },
+      { name: 'Twitch', urlScheme: 'twitch://' },
+      { name: 'Disney+', urlScheme: 'disneyplus://' },
+      { name: 'Spotify', urlScheme: 'spotify://' },
+      { name: 'Apple Music', urlScheme: 'music://' },
+      { name: 'Prime Video', urlScheme: 'aiv://' },
+      { name: 'HBO Max', urlScheme: 'hbomax://' },
+    ],
+  },
+  {
+    id: 'education',
+    name: 'Education',
+    apps: [
+      { name: 'Duolingo', urlScheme: 'duolingo://' },
+      { name: 'Khan Academy', urlScheme: 'khanacademy://' },
+      { name: 'Coursera', urlScheme: 'coursera://' },
+      { name: 'Quizlet', urlScheme: 'quizlet://' },
+      { name: 'Notion', urlScheme: 'notion://' },
+      { name: 'Anki', urlScheme: 'anki://' },
+    ],
+  },
+  {
+    id: 'utilities',
+    name: 'Utilities',
+    apps: [
+      { name: 'Safari' },
+      { name: 'Chrome', urlScheme: 'googlechrome://' },
+      { name: 'Mail' },
+      { name: 'Maps', urlScheme: 'maps://' },
+      { name: 'Files' },
+      { name: 'Calendar', urlScheme: 'calshow://' },
+    ],
+  },
+  {
+    id: 'health',
+    name: 'Health & Fitness',
+    apps: [
+      { name: 'Strava', urlScheme: 'strava://' },
+      { name: 'MyFitnessPal', urlScheme: 'myfitnesspal://' },
+      { name: 'Headspace', urlScheme: 'headspace://' },
+      { name: 'Calm', urlScheme: 'calm://' },
+      { name: 'Nike Run Club', urlScheme: 'nikerunclub://' },
+      { name: 'Health', urlScheme: 'x-apple-health://' },
+    ],
+  },
+  {
+    id: 'news',
+    name: 'News & Reading',
+    apps: [
+      { name: 'Apple News', urlScheme: 'applenews://' },
+      { name: 'Flipboard', urlScheme: 'flipboard://' },
+      { name: 'Kindle', urlScheme: 'kindle://' },
+      { name: 'Medium', urlScheme: 'medium://' },
+      { name: 'Pocket', urlScheme: 'pocket://' },
+      { name: 'Feedly', urlScheme: 'feedly://' },
+    ],
+  },
+  {
+    id: 'messaging',
+    name: 'Messaging',
+    apps: [
+      { name: 'WhatsApp', urlScheme: 'whatsapp://' },
+      { name: 'Telegram', urlScheme: 'tg://' },
+      { name: 'iMessage', urlScheme: 'messages://' },
+      { name: 'Discord', urlScheme: 'discord://' },
+      { name: 'Signal', urlScheme: 'sgnl://' },
+      { name: 'Messenger', urlScheme: 'fb-messenger://' },
+    ],
+  },
 ];
+
+// Flatten all apps for easy lookup
+export const ALL_APPS: AppInfo[] = APP_CATEGORIES.flatMap(cat => cat.apps);
+
+// Keep COMMON_APPS for backward compatibility
+export const COMMON_APPS = ALL_APPS;
 
 // Time limit presets in minutes
 export const TIME_PRESETS = [

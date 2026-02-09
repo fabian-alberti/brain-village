@@ -1,6 +1,8 @@
 import React, { createContext, useContext, useEffect, useReducer, ReactNode } from 'react';
 import { User as FirebaseUser } from 'firebase/auth';
-import { User, Goal } from '@/lib/types';
+import { Timestamp } from 'firebase/firestore';
+import { User, Goal, NewGoal } from '@/lib/types';
+import { calculateXpReward } from '@/lib/xp';
 import { 
   onAuthChange, 
   subscribeToUser, 
@@ -10,7 +12,40 @@ import {
   signOut as firebaseSignOut,
   updateUserData,
   createUserDocument,
+  createGoal as firebaseCreateGoal,
+  updateGoal as firebaseUpdateGoal,
+  deleteGoal as firebaseDeleteGoal,
 } from '@/lib/firebase';
+
+// ──────────────────────────────────────────────
+// Set to true to bypass Firebase auth for testing
+export const TEST_MODE = true;
+// ──────────────────────────────────────────────
+
+const MOCK_USER: User = {
+  id: 'test-user-001',
+  email: 'test@brainvillage.dev',
+  displayName: 'Test User',
+  totalXp: 150,
+  currentLevel: 2,
+  villageState: 'flourishing',
+  consecutiveMisses: 0,
+  goalsCompleted: 3,
+  currentStreak: 5,
+  settings: {
+    notificationsEnabled: true,
+    reminderTime: '09:00',
+  },
+  createdAt: Timestamp.now(),
+};
+
+const MOCK_GOALS: Goal[] = [];
+
+// Generate a simple unique ID for test mode
+let nextId = 1;
+function generateTestId() {
+  return `test-goal-${Date.now()}-${nextId++}`;
+}
 
 // State types
 interface AppState {
@@ -28,6 +63,9 @@ type AppAction =
   | { type: 'SET_GOALS'; payload: Goal[] }
   | { type: 'SET_LOADING'; payload: boolean }
   | { type: 'UPDATE_SETTINGS'; payload: User['settings'] }
+  | { type: 'ADD_GOAL'; payload: Goal }
+  | { type: 'REMOVE_GOAL'; payload: string }
+  | { type: 'UPDATE_GOAL'; payload: { id: string; data: Partial<Goal> } }
   | { type: 'SIGN_OUT' };
 
 // Initial state
@@ -50,7 +88,6 @@ function appReducer(state: AppState, action: AppAction): AppState {
         isLoading: false,
       };
     case 'SET_USER': {
-      // Ensure user always has default settings (for users created before settings existed)
       if (action.payload) {
         const defaultSettings = {
           notificationsEnabled: true,
@@ -88,6 +125,23 @@ function appReducer(state: AppState, action: AppAction): AppState {
           settings: action.payload,
         },
       };
+    case 'ADD_GOAL':
+      return {
+        ...state,
+        goals: [action.payload, ...state.goals],
+      };
+    case 'REMOVE_GOAL':
+      return {
+        ...state,
+        goals: state.goals.filter(g => g.id !== action.payload),
+      };
+    case 'UPDATE_GOAL':
+      return {
+        ...state,
+        goals: state.goals.map(g =>
+          g.id === action.payload.id ? { ...g, ...action.payload.data, updatedAt: Timestamp.now() } : g
+        ),
+      };
     case 'SIGN_OUT':
       return {
         ...initialState,
@@ -104,6 +158,9 @@ interface AppContextType extends AppState {
   signUp: (email: string, password: string, displayName: string) => Promise<void>;
   signOut: () => Promise<void>;
   updateSettings: (settings: Partial<User['settings']>) => Promise<void>;
+  addGoal: (goalData: NewGoal) => Promise<string>;
+  removeGoal: (goalId: string) => Promise<void>;
+  updateGoalData: (goalId: string, data: Partial<Goal>) => Promise<void>;
 }
 
 // Create context
@@ -113,8 +170,17 @@ const AppContext = createContext<AppContextType | undefined>(undefined);
 export function AppProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(appReducer, initialState);
 
-  // Listen to auth state changes
+  // ── TEST MODE: skip Firebase, inject mock data immediately ──
   useEffect(() => {
+    if (!TEST_MODE) return;
+    dispatch({ type: 'SET_USER', payload: MOCK_USER });
+    dispatch({ type: 'SET_GOALS', payload: MOCK_GOALS });
+    dispatch({ type: 'SET_FIREBASE_USER', payload: { uid: MOCK_USER.id } as any });
+  }, []);
+
+  // Listen to auth state changes (skipped in TEST_MODE)
+  useEffect(() => {
+    if (TEST_MODE) return;
     const unsubscribe = onAuthChange((firebaseUser) => {
       dispatch({ type: 'SET_FIREBASE_USER', payload: firebaseUser });
     });
@@ -122,8 +188,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return () => unsubscribe();
   }, []);
 
-  // Subscribe to user data when authenticated
+  // Subscribe to user data when authenticated (skipped in TEST_MODE)
   useEffect(() => {
+    if (TEST_MODE) return;
+
     if (!state.firebaseUser) {
       dispatch({ type: 'SET_USER', payload: null });
       dispatch({ type: 'SET_GOALS', payload: [] });
@@ -132,11 +200,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
     const unsubscribeUser = subscribeToUser(state.firebaseUser.uid, (user) => {
       if (!user && state.firebaseUser) {
-        // User document doesn't exist (legacy user) — auto-create it
         const email = state.firebaseUser.email || '';
         const displayName = state.firebaseUser.displayName || 'User';
         createUserDocument(state.firebaseUser.uid, email, displayName).catch(console.error);
-        // The subscription will fire again after the document is created
         return;
       }
       dispatch({ type: 'SET_USER', payload: user });
@@ -154,6 +220,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   // Auth functions
   const signIn = async (email: string, password: string) => {
+    if (TEST_MODE) return;
     dispatch({ type: 'SET_LOADING', payload: true });
     try {
       await firebaseSignIn(email, password);
@@ -163,6 +230,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   };
 
   const signUp = async (email: string, password: string, displayName: string) => {
+    if (TEST_MODE) return;
     dispatch({ type: 'SET_LOADING', payload: true });
     try {
       await firebaseSignUp(email, password, displayName);
@@ -172,6 +240,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   };
 
   const signOut = async () => {
+    if (TEST_MODE) return;
     dispatch({ type: 'SET_LOADING', payload: true });
     try {
       await firebaseSignOut();
@@ -182,7 +251,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   };
 
   const updateSettings = async (settings: Partial<User['settings']>) => {
-    if (!state.firebaseUser || !state.user) return;
+    if (!state.user) return;
     
     const defaultSettings = {
       notificationsEnabled: true,
@@ -192,17 +261,64 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const currentSettings = state.user.settings || defaultSettings;
     const newSettings = { ...currentSettings, ...settings };
     
-    // Optimistic update - update local state immediately
     dispatch({ type: 'UPDATE_SETTINGS', payload: newSettings });
     
-    // Then persist to Firebase
-    try {
-      await updateUserData(state.firebaseUser.uid, {
-        settings: newSettings,
-      });
-    } catch (error) {
-      console.error('Failed to update settings:', error);
+    if (!TEST_MODE && state.firebaseUser) {
+      try {
+        await updateUserData(state.firebaseUser.uid, {
+          settings: newSettings,
+        });
+      } catch (error) {
+        console.error('Failed to update settings:', error);
+      }
     }
+  };
+
+  // ── Goal CRUD ──
+  // In TEST_MODE these operate on local state only.
+  // In production they call Firebase (and the subscription updates local state).
+
+  const addGoal = async (goalData: NewGoal): Promise<string> => {
+    if (TEST_MODE) {
+      const id = generateTestId();
+      const xpReward = calculateXpReward(goalData.type, goalData.limit);
+      const newGoal: Goal = {
+        id,
+        ...goalData,
+        targetCategories: goalData.targetCategories || [],
+        currentProgress: 0,
+        xpReward,
+        isCompleted: false,
+        consecutiveMisses: 0,
+        createdAt: Timestamp.now(),
+        updatedAt: Timestamp.now(),
+      };
+      dispatch({ type: 'ADD_GOAL', payload: newGoal });
+      return id;
+    }
+
+    if (!state.firebaseUser) throw new Error('User not authenticated');
+    return firebaseCreateGoal(state.firebaseUser.uid, goalData);
+  };
+
+  const removeGoal = async (goalId: string): Promise<void> => {
+    if (TEST_MODE) {
+      dispatch({ type: 'REMOVE_GOAL', payload: goalId });
+      return;
+    }
+
+    if (!state.firebaseUser) throw new Error('User not authenticated');
+    await firebaseDeleteGoal(state.firebaseUser.uid, goalId);
+  };
+
+  const updateGoalData = async (goalId: string, data: Partial<Goal>): Promise<void> => {
+    if (TEST_MODE) {
+      dispatch({ type: 'UPDATE_GOAL', payload: { id: goalId, data } });
+      return;
+    }
+
+    if (!state.firebaseUser) throw new Error('User not authenticated');
+    await firebaseUpdateGoal(state.firebaseUser.uid, goalId, data);
   };
 
   const value: AppContextType = {
@@ -211,6 +327,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
     signUp,
     signOut,
     updateSettings,
+    addGoal,
+    removeGoal,
+    updateGoalData,
   };
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;

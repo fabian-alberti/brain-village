@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -7,254 +7,466 @@ import {
   ScrollView,
   Alert,
   ActivityIndicator,
-  Animated,
-  Dimensions,
-  KeyboardAvoidingView,
+  Modal,
   Platform,
+  KeyboardAvoidingView,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams } from 'expo-router';
-import Svg, { Path, Circle, Rect, G, Text as SvgText } from 'react-native-svg';
+import Svg, { Path, Rect, Circle } from 'react-native-svg';
 import { useApp, useGoals } from '@/context/AppContext';
-import { createGoal, updateGoal } from '@/lib/firebase';
-import { calculateXpReward } from '@/lib/xp';
-import { GoalType, COMMON_APPS, Goal } from '@/lib/types';
-
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
+import { useDeviceApps } from '@/hooks/useDeviceApps';
+import AppBrandIcon, { CategoryIcon } from '@/components/ui/AppBrandIcon';
+import { GoalType, APP_CATEGORIES, AppCategory, Goal } from '@/lib/types';
 
 // ============ ICONS ============
 
-function CloseIcon() {
+function ScreenTimeTypeIcon({ selected }: { selected: boolean }) {
+  const stroke = selected ? '#2D5A3D' : '#888';
+  const fill = selected ? '#E8F5E9' : '#F5F5F5';
   return (
-    <Svg width={24} height={24} viewBox="0 0 24 24" fill="none">
-      <Path
-        d="M18 6L6 18M6 6L18 18"
-        stroke="#64748B"
-        strokeWidth={2}
-        strokeLinecap="round"
-      />
+    <Svg width={32} height={32} viewBox="0 0 24 24" fill="none">
+      <Rect x="2" y="3" width="20" height="14" rx="2" stroke={stroke} strokeWidth={1.5} fill={fill} />
+      <Path d="M8 21H16" stroke={stroke} strokeWidth={1.5} strokeLinecap="round" />
+      <Path d="M12 17V21" stroke={stroke} strokeWidth={1.5} strokeLinecap="round" />
     </Svg>
   );
 }
 
-function ArrowLeftIcon() {
+function AppTimeTypeIcon({ selected }: { selected: boolean }) {
+  const stroke = selected ? '#2D5A3D' : '#888';
+  const fill = selected ? '#E8F5E9' : '#F5F5F5';
   return (
-    <Svg width={24} height={24} viewBox="0 0 24 24" fill="none">
-      <Path
-        d="M19 12H5M5 12L12 19M5 12L12 5"
-        stroke="#64748B"
-        strokeWidth={2}
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
+    <Svg width={32} height={32} viewBox="0 0 24 24" fill="none">
+      <Circle cx="12" cy="12" r="9" stroke={stroke} strokeWidth={1.5} fill={fill} />
+      <Path d="M12 7V12L15 14" stroke={stroke} strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" />
     </Svg>
   );
 }
 
-function ArrowRightIcon({ color = "#FFFFFF" }: { color?: string }) {
+function AppOpensTypeIcon({ selected }: { selected: boolean }) {
+  const stroke = selected ? '#2D5A3D' : '#888';
+  const fill = selected ? '#E8F5E9' : '#F5F5F5';
+  return (
+    <Svg width={32} height={32} viewBox="0 0 24 24" fill="none">
+      <Rect x="5" y="11" width="14" height="10" rx="2" stroke={stroke} strokeWidth={1.5} fill={fill} />
+      <Path d="M8 11V7C8 4.79086 9.79086 3 12 3C14.2091 3 16 4.79086 16 7V11" stroke={stroke} strokeWidth={1.5} strokeLinecap="round" />
+    </Svg>
+  );
+}
+
+function ChevronRight() {
   return (
     <Svg width={20} height={20} viewBox="0 0 24 24" fill="none">
-      <Path
-        d="M5 12H19M19 12L12 5M19 12L12 19"
-        stroke={color}
-        strokeWidth={2.5}
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
+      <Path d="M9 18L15 12L9 6" stroke="#999" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
     </Svg>
   );
 }
 
-function CheckIcon({ color = "#FFFFFF", size = 20 }: { color?: string; size?: number }) {
+function ChevronDown() {
   return (
-    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
-      <Path
-        d="M20 6L9 17L4 12"
-        stroke={color}
-        strokeWidth={3}
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
+    <Svg width={20} height={20} viewBox="0 0 24 24" fill="none">
+      <Path d="M6 9L12 15L18 9" stroke="#999" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
     </Svg>
   );
 }
 
-function SparkleIcon() {
+function GridIcon() {
   return (
     <Svg width={16} height={16} viewBox="0 0 24 24" fill="none">
-      <Path
-        d="M12 2L14.4 9.6L22 12L14.4 14.4L12 22L9.6 14.4L2 12L9.6 9.6L12 2Z"
-        fill="#F59E0B"
-        stroke="#F59E0B"
-        strokeWidth={1.5}
-        strokeLinejoin="round"
-      />
+      <Rect x="3" y="3" width="8" height="8" rx="2" fill="#2D5A3D" />
+      <Rect x="13" y="3" width="8" height="8" rx="2" fill="#2D5A3D" />
+      <Rect x="3" y="13" width="8" height="8" rx="2" fill="#2D5A3D" />
+      <Rect x="13" y="13" width="8" height="8" rx="2" fill="#2D5A3D" />
     </Svg>
   );
 }
 
-// Goal Type Illustrations
-function ScreenTimeIcon({ selected }: { selected: boolean }) {
-  const color = selected ? '#059669' : '#94A3B8';
+function AppIcon() {
   return (
-    <Svg width={48} height={48} viewBox="0 0 48 48" fill="none">
-      <Rect x="8" y="6" width="32" height="28" rx="4" stroke={color} strokeWidth={2.5} fill={selected ? '#ECFDF5' : '#F8FAFC'} />
-      <Rect x="18" y="34" width="12" height="8" stroke={color} strokeWidth={2.5} fill={selected ? '#ECFDF5' : '#F8FAFC'} />
-      <Rect x="14" y="42" width="20" height="2" rx="1" fill={color} />
-      <Circle cx="24" cy="20" r="8" stroke={color} strokeWidth={2.5} fill="none" />
-      <Path d="M24 14V20L28 22" stroke={color} strokeWidth={2.5} strokeLinecap="round" />
+    <Svg width={16} height={16} viewBox="0 0 24 24" fill="none">
+      <Rect x="4" y="4" width="16" height="16" rx="3" stroke="#2D5A3D" strokeWidth={2} fill="#E8F5E9" />
     </Svg>
   );
 }
 
-function AppTimeIcon({ selected }: { selected: boolean }) {
-  const color = selected ? '#059669' : '#94A3B8';
-  return (
-    <Svg width={48} height={48} viewBox="0 0 48 48" fill="none">
-      <Rect x="12" y="4" width="24" height="40" rx="4" stroke={color} strokeWidth={2.5} fill={selected ? '#ECFDF5' : '#F8FAFC'} />
-      <Rect x="20" y="38" width="8" height="2" rx="1" fill={color} />
-      <Circle cx="24" cy="22" r="8" stroke={color} strokeWidth={2.5} fill="none" />
-      <Path d="M24 16V22L27 24" stroke={color} strokeWidth={2.5} strokeLinecap="round" />
-      <Circle cx="32" cy="12" r="6" fill="#F59E0B" />
-      <Path d="M30 12H34M32 10V14" stroke="#FFFFFF" strokeWidth={1.5} strokeLinecap="round" />
-    </Svg>
-  );
-}
+// ============ GOAL TYPE DATA ============
 
-function AppOpensIcon({ selected }: { selected: boolean }) {
-  const color = selected ? '#059669' : '#94A3B8';
-  return (
-    <Svg width={48} height={48} viewBox="0 0 48 48" fill="none">
-      <Rect x="12" y="4" width="24" height="40" rx="4" stroke={color} strokeWidth={2.5} fill={selected ? '#ECFDF5' : '#F8FAFC'} />
-      <Rect x="20" y="38" width="8" height="2" rx="1" fill={color} />
-      <Path d="M18 18L24 12L30 18" stroke={color} strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" />
-      <Path d="M24 12V28" stroke={color} strokeWidth={2.5} strokeLinecap="round" />
-      <Circle cx="32" cy="12" r="6" fill="#EF4444" />
-      <SvgText x="32" y="16" textAnchor="middle" fill="#FFFFFF" fontSize="10" fontWeight="bold">5</SvgText>
-    </Svg>
-  );
-}
-
-// ============ TYPES ============
-
-const GOAL_TYPES: { type: GoalType; label: string; description: string; icon: (selected: boolean) => JSX.Element }[] = [
+const GOAL_TYPES: { type: GoalType; label: string; description: string }[] = [
   {
     type: 'overall_screen_time',
-    label: 'Total Screen Time',
-    description: 'Set a daily limit for all device usage',
-    icon: (selected) => <ScreenTimeIcon selected={selected} />,
+    label: 'Overall Screen Time',
+    description: 'Total time across all apps',
   },
   {
     type: 'app_time_limit',
-    label: 'App Time Limit',
-    description: 'Limit time spent on specific apps',
-    icon: (selected) => <AppTimeIcon selected={selected} />,
+    label: 'App Time',
+    description: 'Time on specific apps',
   },
   {
     type: 'app_opens_limit',
-    label: 'App Opens Limit',
-    description: 'Control how many times you open apps',
-    icon: (selected) => <AppOpensIcon selected={selected} />,
+    label: 'App Opens',
+    description: 'How often you open apps',
   },
 ];
 
-const EMOJI_OPTIONS = ['🎯', '📱', '⏰', '🔒', '🧘', '💪', '🌟', '🏆', '🔥', '💡', '🎮', '📺', '🌙', '☀️', '🍃', '🎨'];
+// ============ APP PICKER MODAL ============
 
-const TIME_OPTIONS = [
-  { label: '15m', value: 15, subtext: 'Strict' },
-  { label: '30m', value: 30, subtext: 'Focused' },
-  { label: '1h', value: 60, subtext: 'Balanced' },
-  { label: '1.5h', value: 90, subtext: '' },
-  { label: '2h', value: 120, subtext: 'Relaxed' },
-  { label: '3h', value: 180, subtext: '' },
-];
+interface AppPickerProps {
+  visible: boolean;
+  availableCategories: AppCategory[];
+  isDeviceFiltered: boolean;
+  initialCategories: string[];
+  initialApps: string[];
+  onSave: (categories: string[], apps: string[]) => void;
+  onCancel: () => void;
+}
 
-const OPENS_OPTIONS = [
-  { label: '3', value: 3, subtext: 'Strict' },
-  { label: '5', value: 5, subtext: 'Focused' },
-  { label: '10', value: 10, subtext: 'Balanced' },
-  { label: '20', value: 20, subtext: '' },
-  { label: '30', value: 30, subtext: 'Relaxed' },
-];
+function AppPickerModal({ visible, availableCategories, isDeviceFiltered, initialCategories, initialApps, onSave, onCancel }: AppPickerProps) {
+  const [tempCategories, setTempCategories] = useState<string[]>(initialCategories);
+  const [tempApps, setTempApps] = useState<string[]>(initialApps);
+  const [expandedCategory, setExpandedCategory] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
 
-// ============ STEP INDICATOR ============
+  // Reset temp state when modal opens
+  useEffect(() => {
+    if (visible) {
+      setTempCategories([...initialCategories]);
+      setTempApps([...initialApps]);
+      setExpandedCategory(null);
+      setSearchQuery('');
+    }
+  }, [visible]);
 
-function StepIndicator({ currentStep, totalSteps }: { currentStep: number; totalSteps: number }) {
+  const allSelected = tempCategories.length === availableCategories.length;
+
+  const toggleSelectAll = () => {
+    if (allSelected) {
+      setTempCategories([]);
+      setTempApps([]);
+    } else {
+      setTempCategories(availableCategories.map(c => c.id));
+      setTempApps([]);
+    }
+  };
+
+  const toggleCategory = (categoryId: string) => {
+    if (tempCategories.includes(categoryId)) {
+      setTempCategories(prev => prev.filter(id => id !== categoryId));
+    } else {
+      setTempCategories(prev => [...prev, categoryId]);
+      // Remove individual apps from this category since the whole category is now selected
+      const category = availableCategories.find(c => c.id === categoryId);
+      if (category) {
+        const appNames = category.apps.map(a => a.name);
+        setTempApps(prev => prev.filter(name => !appNames.includes(name)));
+      }
+    }
+  };
+
+  const toggleApp = (appName: string, categoryId: string) => {
+    if (tempCategories.includes(categoryId)) {
+      // Category is fully selected - deselect it and select all OTHER apps from this category
+      const category = availableCategories.find(c => c.id === categoryId);
+      if (category) {
+        setTempCategories(prev => prev.filter(id => id !== categoryId));
+        const otherApps = category.apps.filter(a => a.name !== appName).map(a => a.name);
+        setTempApps(prev => {
+          const cleaned = prev.filter(name => !category.apps.some(a => a.name === name));
+          return [...cleaned, ...otherApps];
+        });
+      }
+    } else if (tempApps.includes(appName)) {
+      setTempApps(prev => prev.filter(name => name !== appName));
+    } else {
+      if (tempApps.length >= 50) {
+        Alert.alert('Limit Reached', 'You can select a maximum of 50 individual apps.');
+        return;
+      }
+      setTempApps(prev => [...prev, appName]);
+
+      // Check if all apps in the category are now selected - auto-promote to category
+      const category = availableCategories.find(c => c.id === categoryId);
+      if (category) {
+        const updatedApps = [...tempApps, appName];
+        const allCatAppsSelected = category.apps.every(a => updatedApps.includes(a.name));
+        if (allCatAppsSelected) {
+          setTempCategories(prev => [...prev, categoryId]);
+          const catAppNames = category.apps.map(a => a.name);
+          setTempApps(prev => prev.filter(name => !catAppNames.includes(name)));
+        }
+      }
+    }
+  };
+
+  const isAppSelected = (appName: string, categoryId: string) => {
+    return tempCategories.includes(categoryId) || tempApps.includes(appName);
+  };
+
+  // Count individual apps selected per category (only when category is not fully selected)
+  const getIndividualCountForCategory = (category: AppCategory) => {
+    if (tempCategories.includes(category.id)) return 0;
+    return category.apps.filter(a => tempApps.includes(a.name)).length;
+  };
+
+  const totalSelections = tempCategories.length + tempApps.length;
+
+  // Filter categories by search
+  const filteredCategories = searchQuery.trim()
+    ? availableCategories.filter(cat =>
+        cat.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        cat.apps.some(app => app.name.toLowerCase().includes(searchQuery.toLowerCase()))
+      )
+    : availableCategories;
+
   return (
-    <View className="flex-row items-center justify-center py-3 gap-2">
-      {Array.from({ length: totalSteps }).map((_, index) => (
-        <View
-          key={index}
-          // NOTE: Avoid NativeWind `transition-*` utilities on web here.
-          // They can rely on Reanimated internals (e.g. `makeMutable`) and crash depending on versions.
-          className={`h-1.5 rounded-full ${
-            index < currentStep
-              ? 'w-8 bg-emerald-500'
-              : index === currentStep
-              ? 'w-8 bg-emerald-400'
-              : 'w-3 bg-slate-200'
-          }`}
-        />
-      ))}
-    </View>
+    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet">
+      <SafeAreaView style={{ flex: 1, backgroundColor: '#FFFBF2' }}>
+        {/* Header instruction */}
+        <View style={{ paddingHorizontal: 20, paddingTop: 16, paddingBottom: 12 }}>
+          <Text style={{ fontSize: 14, color: '#2D5A3D', textAlign: 'center' }}>
+            {isDeviceFiltered
+              ? 'Apps on your device - tap ">" to show more'
+              : 'Select Apps, tap on ">" to show more'}
+          </Text>
+        </View>
+
+        {/* Category List */}
+        <View style={{ flex: 1, marginHorizontal: 16, borderRadius: 12, borderWidth: 1, borderColor: '#E0E0E0', overflow: 'hidden', backgroundColor: 'white' }}>
+          <ScrollView>
+            {/* All Apps & Categories */}
+            <TouchableOpacity
+              onPress={toggleSelectAll}
+              activeOpacity={0.7}
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                paddingHorizontal: 16,
+                paddingVertical: 14,
+                borderBottomWidth: 1,
+                borderBottomColor: '#F0EDE5',
+              }}
+            >
+              <View style={{
+                width: 22,
+                height: 22,
+                borderRadius: 11,
+                borderWidth: 2,
+                borderColor: allSelected ? '#2D5A3D' : '#CCC',
+                backgroundColor: allSelected ? '#2D5A3D' : 'transparent',
+                alignItems: 'center',
+                justifyContent: 'center',
+                marginRight: 12,
+              }}>
+                {allSelected && (
+                  <Svg width={12} height={12} viewBox="0 0 24 24" fill="none">
+                    <Path d="M20 6L9 17L4 12" stroke="white" strokeWidth={3} strokeLinecap="round" strokeLinejoin="round" />
+                  </Svg>
+                )}
+              </View>
+              <Text style={{ fontSize: 15, marginRight: 8 }}>📱</Text>
+              <Text style={{ flex: 1, fontSize: 15, color: '#1A1A1A', fontWeight: '500' }}>All Apps & Categories</Text>
+            </TouchableOpacity>
+
+            {/* Category rows */}
+            {filteredCategories.map(category => {
+              const isCategorySelected = tempCategories.includes(category.id);
+              const isExpanded = expandedCategory === category.id;
+              const individualCount = getIndividualCountForCategory(category);
+
+              return (
+                <View key={category.id}>
+                  <View style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    paddingHorizontal: 16,
+                    paddingVertical: 14,
+                    borderBottomWidth: 1,
+                    borderBottomColor: '#F0EDE5',
+                  }}>
+                    {/* Checkbox */}
+                    <TouchableOpacity
+                      onPress={() => toggleCategory(category.id)}
+                      style={{
+                        width: 22,
+                        height: 22,
+                        borderRadius: 11,
+                        borderWidth: 2,
+                        borderColor: isCategorySelected ? '#2D5A3D' : '#CCC',
+                        backgroundColor: isCategorySelected ? '#2D5A3D' : 'transparent',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        marginRight: 12,
+                      }}
+                    >
+                      {isCategorySelected && (
+                        <Svg width={12} height={12} viewBox="0 0 24 24" fill="none">
+                          <Path d="M20 6L9 17L4 12" stroke="white" strokeWidth={3} strokeLinecap="round" strokeLinejoin="round" />
+                        </Svg>
+                      )}
+                    </TouchableOpacity>
+
+                    {/* Icon + Name */}
+                    <View style={{ marginRight: 10, width: 22, alignItems: 'center' }}>
+                      <CategoryIcon categoryId={category.id} size={20} />
+                    </View>
+                    <Text style={{ flex: 1, fontSize: 15, color: '#1A1A1A', fontWeight: '500' }}>
+                      {category.name}
+                    </Text>
+
+                    {/* Individual selection count */}
+                    {individualCount > 0 && !isCategorySelected && (
+                      <Text style={{ fontSize: 13, color: '#2D5A3D', fontWeight: '600', marginRight: 8 }}>{individualCount}</Text>
+                    )}
+
+                    {/* Expand button */}
+                    <TouchableOpacity
+                      onPress={() => setExpandedCategory(isExpanded ? null : category.id)}
+                      style={{ padding: 4 }}
+                    >
+                      {isExpanded ? <ChevronDown /> : <ChevronRight />}
+                    </TouchableOpacity>
+                  </View>
+
+                  {/* Expanded apps list */}
+                  {isExpanded && (
+                    <View style={{ backgroundColor: '#FAFAF5', paddingLeft: 52 }}>
+                      {category.apps
+                        .filter(app => !searchQuery.trim() || app.name.toLowerCase().includes(searchQuery.toLowerCase()))
+                        .map(app => {
+                          const appSelected = isAppSelected(app.name, category.id);
+                          return (
+                            <TouchableOpacity
+                              key={app.name}
+                              onPress={() => toggleApp(app.name, category.id)}
+                              activeOpacity={0.7}
+                              style={{
+                                flexDirection: 'row',
+                                alignItems: 'center',
+                                paddingVertical: 12,
+                                paddingRight: 16,
+                                borderBottomWidth: 1,
+                                borderBottomColor: '#F0EDE5',
+                              }}
+                            >
+                              <View style={{
+                                width: 20,
+                                height: 20,
+                                borderRadius: 4,
+                                borderWidth: 2,
+                                borderColor: appSelected ? '#2D5A3D' : '#CCC',
+                                backgroundColor: appSelected ? '#2D5A3D' : 'transparent',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                marginRight: 10,
+                              }}>
+                                {appSelected && (
+                                  <Svg width={10} height={10} viewBox="0 0 24 24" fill="none">
+                                    <Path d="M20 6L9 17L4 12" stroke="white" strokeWidth={3} strokeLinecap="round" strokeLinejoin="round" />
+                                  </Svg>
+                                )}
+                              </View>
+                              <View style={{ marginRight: 8, width: 22, alignItems: 'center' }}>
+                                <AppBrandIcon appName={app.name} size={20} />
+                              </View>
+                              <Text style={{ fontSize: 14, color: '#1A1A1A' }}>{app.name}</Text>
+                            </TouchableOpacity>
+                          );
+                        })}
+                    </View>
+                  )}
+                </View>
+              );
+            })}
+          </ScrollView>
+        </View>
+
+        {/* Bottom section */}
+        <View style={{ paddingHorizontal: 20, paddingTop: 16, paddingBottom: 12 }}>
+          {/* Search bar */}
+          <View style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            backgroundColor: '#F0EDE5',
+            borderRadius: 12,
+            paddingHorizontal: 14,
+            paddingVertical: 10,
+            marginBottom: 12,
+          }}>
+            <Text style={{ fontSize: 16, color: '#999', marginRight: 8 }}>🔍</Text>
+            <TextInput
+              placeholder="Search"
+              placeholderTextColor="#999"
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              style={{ flex: 1, fontSize: 15, color: '#1A1A1A', padding: 0 }}
+            />
+          </View>
+
+          {/* Selection counter */}
+          <Text style={{ textAlign: 'center', fontSize: 14, color: '#2D5A3D', fontWeight: '600', marginBottom: 16 }}>
+            {totalSelections} {totalSelections === 1 ? 'App' : 'Apps'} Selected
+          </Text>
+
+          {/* Save button */}
+          <TouchableOpacity
+            onPress={() => onSave(tempCategories, tempApps)}
+            activeOpacity={0.8}
+            style={{
+              backgroundColor: '#2D5A3D',
+              borderRadius: 25,
+              paddingVertical: 16,
+              alignItems: 'center',
+              marginBottom: 12,
+            }}
+          >
+            <Text style={{ fontSize: 16, fontWeight: '700', color: 'white' }}>Save</Text>
+          </TouchableOpacity>
+
+          {/* Cancel */}
+          <TouchableOpacity onPress={onCancel} activeOpacity={0.7}>
+            <Text style={{ textAlign: 'center', fontSize: 15, color: '#666' }}>Cancel</Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    </Modal>
   );
 }
 
-// ============ MAIN COMPONENT ============
+// ============ MAIN CREATE SCREEN ============
 
 export default function CreateGoalScreen() {
-  // #region agent log
-  fetch('http://127.0.0.1:7243/ingest/4753647c-c0b8-48ea-b089-08364daf0516',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'create.tsx:mount',message:'CreateGoalScreen component mounting',data:{},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'D'})}).catch(()=>{});
-  // #endregion
-  
   const router = useRouter();
   const { edit } = useLocalSearchParams<{ edit?: string }>();
-  const { firebaseUser } = useApp();
+  const { addGoal, updateGoalData } = useApp();
   const goals = useGoals();
-  
+  const { categories: deviceCategories, isDeviceFiltered } = useDeviceApps();
+
   const [isLoading, setIsLoading] = useState(false);
-  const [currentStep, setCurrentStep] = useState(0);
-  
+
   // Form state
   const [name, setName] = useState('');
-  const [icon, setIcon] = useState('🎯');
   const [type, setType] = useState<GoalType>('overall_screen_time');
   const [selectedApps, setSelectedApps] = useState<string[]>([]);
-  const [limit, setLimit] = useState(60);
+  const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
+  const [limit, setLimit] = useState(90); // minutes or opens count
 
-  // Animation
-  const slideAnim = useRef(new Animated.Value(0)).current;
-  const fadeAnim = useRef(new Animated.Value(1)).current;
+  // App picker modal
+  const [showAppPicker, setShowAppPicker] = useState(false);
 
   const isEditing = !!edit;
   const needsAppSelection = type !== 'overall_screen_time';
-  const totalSteps = needsAppSelection ? 4 : 3;
-  
-  // Determine steps based on goal type
-  const getStepContent = () => {
-    if (needsAppSelection) {
-      return ['type', 'apps', 'limit', 'details'];
-    }
-    return ['type', 'limit', 'details'];
-  };
-  const steps = getStepContent();
+  const isOpensType = type === 'app_opens_limit';
+
+  // Time display
+  const hours = Math.floor(limit / 60);
+  const mins = limit % 60;
 
   const dismissOrGoBack = () => {
-    // #region agent log
-    fetch('http://127.0.0.1:7243/ingest/4753647c-c0b8-48ea-b089-08364daf0516',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'create.tsx:dismissOrGoBack',message:'Attempting to close modal/screen',data:{hasDismiss:typeof (router as any).dismiss === 'function',hasBack:typeof (router as any).back === 'function',historyLength:typeof window !== 'undefined' ? window.history.length : null},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'BACK'})}).catch(()=>{});
-    // #endregion
-
-    // On web we frequently have no stack history for modals, which triggers:
-    // "The action 'POP' ... was not handled by any navigator."
-    // So we avoid POP entirely and just navigate back to the tabs root.
     if (Platform.OS === 'web') {
-      // #region agent log
-      fetch('http://127.0.0.1:7243/ingest/4753647c-c0b8-48ea-b089-08364daf0516',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'create.tsx:dismissOrGoBack:webReplace',message:'Web close: router.replace(/(tabs))',data:{},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'BACK'})}).catch(()=>{});
-      // #endregion
       router.replace('/(tabs)');
       return;
     }
-
     const anyRouter = router as any;
     if (typeof anyRouter.dismiss === 'function') {
       anyRouter.dismiss();
@@ -263,108 +475,53 @@ export default function CreateGoalScreen() {
     router.back();
   };
 
-  // #region agent log
-  useEffect(() => {
-    fetch('http://127.0.0.1:7243/ingest/4753647c-c0b8-48ea-b089-08364daf0516',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'create.tsx:useEffectMount',message:'CreateGoalScreen useEffect - component fully mounted',data:{firebaseUser:!!firebaseUser,goalsCount:goals.length},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'D-E'})}).catch(()=>{});
-  }, []);
-  // #endregion
-
   // Load goal data if editing
   useEffect(() => {
     if (edit && goals.length > 0) {
       const goalToEdit = goals.find(g => g.id === edit);
       if (goalToEdit) {
         setName(goalToEdit.name);
-        setIcon(goalToEdit.icon);
         setType(goalToEdit.type);
-        setSelectedApps(goalToEdit.targetApps);
+        setSelectedApps(goalToEdit.targetApps || []);
+        setSelectedCategories(goalToEdit.targetCategories || []);
         setLimit(goalToEdit.limit);
       }
     }
   }, [edit, goals]);
 
-  const xpReward = calculateXpReward(type, limit);
-
-  const animateTransition = (direction: 'next' | 'back') => {
-    const toValue = direction === 'next' ? -1 : 1;
-    
-    Animated.parallel([
-      Animated.timing(fadeAnim, {
-        toValue: 0,
-        duration: 150,
-        useNativeDriver: true,
-      }),
-      Animated.timing(slideAnim, {
-        toValue: toValue * 50,
-        duration: 150,
-        useNativeDriver: true,
-      }),
-    ]).start(() => {
-      slideAnim.setValue(direction === 'next' ? 50 : -50);
-      
-      Animated.parallel([
-        Animated.timing(fadeAnim, {
-          toValue: 1,
-          duration: 200,
-          useNativeDriver: true,
-        }),
-        Animated.timing(slideAnim, {
-          toValue: 0,
-          duration: 200,
-          useNativeDriver: true,
-        }),
-      ]).start();
-    });
-  };
-
-  const goToNextStep = () => {
-    // Validate current step
-    if (steps[currentStep] === 'apps' && selectedApps.length === 0) {
-      Alert.alert('Select Apps', 'Please select at least one app to track');
-      return;
+  // Set default limit when type changes
+  useEffect(() => {
+    if (!isEditing) {
+      if (type === 'app_opens_limit') {
+        setLimit(10);
+      } else {
+        setLimit(90);
+      }
     }
-    
-    if (currentStep < totalSteps - 1) {
-      animateTransition('next');
-      setTimeout(() => setCurrentStep(currentStep + 1), 150);
+  }, [type]);
+
+  const adjustTime = (delta: number) => {
+    const newLimit = limit + delta;
+    if (newLimit >= 30 && newLimit <= 720) {
+      setLimit(newLimit);
     }
   };
 
-  const goToPrevStep = () => {
-    // #region agent log
-    fetch('http://127.0.0.1:7243/ingest/4753647c-c0b8-48ea-b089-08364daf0516',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'create.tsx:goToPrevStep',message:'goToPrevStep called',data:{currentStep},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'BACK'})}).catch(()=>{});
-    // #endregion
-    if (currentStep > 0) {
-      animateTransition('back');
-      setTimeout(() => setCurrentStep(currentStep - 1), 150);
+  const adjustOpens = (delta: number) => {
+    const newLimit = limit + delta;
+    if (newLimit >= 1 && newLimit <= 200) {
+      setLimit(newLimit);
     }
-  };
-
-  const toggleApp = (appName: string) => {
-    setSelectedApps(prev =>
-      prev.includes(appName)
-        ? prev.filter(a => a !== appName)
-        : [...prev, appName]
-    );
   };
 
   const handleSave = async () => {
-    // #region agent log
-    fetch('http://127.0.0.1:7243/ingest/4753647c-c0b8-48ea-b089-08364daf0516',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'create.tsx:handleSave',message:'handleSave called',data:{name,firebaseUserExists:!!firebaseUser,isEditing},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'SAVE'})}).catch(()=>{});
-    // #endregion
-    
     if (!name.trim()) {
-      // #region agent log
-      fetch('http://127.0.0.1:7243/ingest/4753647c-c0b8-48ea-b089-08364daf0516',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'create.tsx:handleSave:noName',message:'No name provided',data:{name},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'SAVE'})}).catch(()=>{});
-      // #endregion
       Alert.alert('Missing Name', 'Please give your goal a name');
       return;
     }
 
-    if (!firebaseUser) {
-      // #region agent log
-      fetch('http://127.0.0.1:7243/ingest/4753647c-c0b8-48ea-b089-08364daf0516',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'create.tsx:handleSave:noUser',message:'No firebase user',data:{},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'SAVE'})}).catch(()=>{});
-      // #endregion
+    if (needsAppSelection && selectedApps.length === 0 && selectedCategories.length === 0) {
+      Alert.alert('Select Apps', 'Please select at least one app or category to track');
       return;
     }
 
@@ -372,469 +529,468 @@ export default function CreateGoalScreen() {
     try {
       const goalData = {
         name: name.trim(),
-        icon,
+        icon: '',
         type,
         targetApps: type === 'overall_screen_time' ? [] : selectedApps,
+        targetCategories: type === 'overall_screen_time' ? [] : selectedCategories,
         limit,
       };
 
-      // #region agent log
-      fetch('http://127.0.0.1:7243/ingest/4753647c-c0b8-48ea-b089-08364daf0516',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'create.tsx:handleSave:beforeCreate',message:'About to create goal',data:{goalData,userId:firebaseUser.uid},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'SAVE'})}).catch(()=>{});
-      // #endregion
-
       if (isEditing && edit) {
-        await updateGoal(firebaseUser.uid, edit, goalData);
+        await updateGoalData(edit, goalData);
       } else {
-        await createGoal(firebaseUser.uid, goalData);
+        await addGoal(goalData);
       }
-      
-      // #region agent log
-      fetch('http://127.0.0.1:7243/ingest/4753647c-c0b8-48ea-b089-08364daf0516',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'create.tsx:handleSave:success',message:'Goal saved successfully',data:{},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'SAVE'})}).catch(()=>{});
-      // #endregion
-      
+
       dismissOrGoBack();
     } catch (error) {
-      // #region agent log
-      fetch('http://127.0.0.1:7243/ingest/4753647c-c0b8-48ea-b089-08364daf0516',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'create.tsx:handleSave:error',message:'Error saving goal',data:{error:String(error)},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'SAVE'})}).catch(()=>{});
-      // #endregion
       Alert.alert('Error', 'Failed to save goal. Please try again.');
     } finally {
       setIsLoading(false);
     }
   };
 
-  // Auto-generate name suggestion based on selection
-  const getNameSuggestion = () => {
-    if (type === 'overall_screen_time') {
-      return 'Daily Screen Time';
-    }
-    if (selectedApps.length === 1) {
-      return `Limit ${selectedApps[0]}`;
-    }
-    if (selectedApps.length > 1) {
-      return type === 'app_time_limit' ? 'App Time Limit' : 'App Opens Limit';
-    }
-    return '';
-  };
-
-  useEffect(() => {
-    if (!isEditing && !name) {
-      const suggestion = getNameSuggestion();
-      if (suggestion) setName(suggestion);
-    }
-  }, [type, selectedApps]);
-
-  // ============ RENDER STEPS ============
-
-  const renderTypeSelection = () => (
-    <View className="flex-1 px-5">
-      <Text className="text-2xl font-bold text-slate-800 mb-2">
-        What would you like to limit?
-      </Text>
-      <Text className="text-base text-slate-500 mb-6">
-        Choose the type of goal that fits your needs
-      </Text>
-      
-      <View className="gap-3">
-        {GOAL_TYPES.map((goalType) => (
-          <TouchableOpacity
-            key={goalType.type}
-            onPress={() => {
-              setType(goalType.type);
-              // Reset limit to appropriate default
-              if (goalType.type === 'app_opens_limit') {
-                setLimit(10);
-              } else {
-                setLimit(60);
-              }
-              // Clear app selection when changing type
-              if (goalType.type === 'overall_screen_time') {
-                setSelectedApps([]);
-              }
-            }}
-            activeOpacity={0.7}
-            className={`flex-row items-center p-4 rounded-2xl border-2 ${
-              type === goalType.type
-                ? 'bg-emerald-50 border-emerald-500'
-                : 'bg-white border-slate-200'
-            }`}
-          >
-            <View className="mr-4">
-              {goalType.icon(type === goalType.type)}
-            </View>
-            <View className="flex-1">
-              <Text className={`text-lg font-semibold ${
-                type === goalType.type ? 'text-emerald-700' : 'text-slate-700'
-              }`}>
-                {goalType.label}
-              </Text>
-              <Text className={`text-sm mt-0.5 ${
-                type === goalType.type ? 'text-emerald-600' : 'text-slate-500'
-              }`}>
-                {goalType.description}
-              </Text>
-            </View>
-            <View className={`w-6 h-6 rounded-full border-2 items-center justify-center ${
-              type === goalType.type
-                ? 'bg-emerald-500 border-emerald-500'
-                : 'border-slate-300'
-            }`}>
-              {type === goalType.type && <CheckIcon size={14} />}
-            </View>
-          </TouchableOpacity>
-        ))}
-      </View>
-    </View>
-  );
-
-  const renderAppSelection = () => (
-    <View className="flex-1 px-5">
-      <Text className="text-2xl font-bold text-slate-800 mb-2">
-        Which apps to track?
-      </Text>
-      <Text className="text-base text-slate-500 mb-1">
-        Select the apps you want to limit
-      </Text>
-      {selectedApps.length > 0 && (
-        <Text className="text-sm text-emerald-600 font-medium mb-4">
-          {selectedApps.length} app{selectedApps.length !== 1 ? 's' : ''} selected
-        </Text>
-      )}
-      {selectedApps.length === 0 && (
-        <Text className="text-sm text-slate-400 mb-4">
-          Tap to select apps
-        </Text>
-      )}
-      
-      <ScrollView 
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={{ paddingBottom: 20 }}
-      >
-        <View className="flex-row flex-wrap gap-2">
-          {COMMON_APPS.map((app) => {
-            const isSelected = selectedApps.includes(app.name);
-            return (
-              <TouchableOpacity
-                key={app.name}
-                onPress={() => toggleApp(app.name)}
-                activeOpacity={0.7}
-                className={`flex-row items-center px-4 py-3 rounded-xl border-2 ${
-                  isSelected
-                    ? 'bg-emerald-50 border-emerald-400'
-                    : 'bg-white border-slate-200'
-                }`}
-              >
-                <Text className="text-lg mr-2">{app.icon}</Text>
-                <Text className={`text-sm font-medium ${
-                  isSelected ? 'text-emerald-700' : 'text-slate-700'
-                }`}>
-                  {app.name}
-                </Text>
-                {isSelected && (
-                  <View className="ml-2 w-5 h-5 rounded-full bg-emerald-500 items-center justify-center">
-                    <CheckIcon size={12} />
-                  </View>
-                )}
-              </TouchableOpacity>
-            );
-          })}
-        </View>
-      </ScrollView>
-    </View>
-  );
-
-  const renderLimitSelection = () => {
-    const isOpensLimit = type === 'app_opens_limit';
-    const options = isOpensLimit ? OPENS_OPTIONS : TIME_OPTIONS;
-    
-    return (
-      <View className="flex-1 px-5">
-        <Text className="text-2xl font-bold text-slate-800 mb-2">
-          Set your daily limit
-        </Text>
-        <Text className="text-base text-slate-500 mb-6">
-          {isOpensLimit 
-            ? 'How many times can you open the app(s)?'
-            : 'How much time do you want to allow?'
-          }
-        </Text>
-        
-        {/* Main limit display */}
-        <View className="bg-gradient-to-br from-emerald-50 to-teal-50 rounded-3xl p-6 mb-6 items-center border border-emerald-100">
-          <Text className="text-6xl font-bold text-emerald-600">
-            {isOpensLimit ? limit : (limit >= 60 ? `${Math.floor(limit / 60)}h${limit % 60 > 0 ? ` ${limit % 60}m` : ''}` : `${limit}m`)}
-          </Text>
-          <Text className="text-base text-slate-500 mt-2">
-            {isOpensLimit ? 'opens per day' : 'per day'}
-          </Text>
-        </View>
-        
-        {/* Options grid */}
-        <View className="flex-row flex-wrap justify-center gap-3">
-          {options.map((option) => {
-            const isSelected = limit === option.value;
-            return (
-              <TouchableOpacity
-                key={option.value}
-                onPress={() => setLimit(option.value)}
-                activeOpacity={0.7}
-                className={`w-20 h-20 rounded-2xl items-center justify-center border-2 ${
-                  isSelected
-                    ? 'bg-emerald-500 border-emerald-500'
-                    : 'bg-white border-slate-200'
-                }`}
-              >
-                <Text className={`text-xl font-bold ${
-                  isSelected ? 'text-white' : 'text-slate-700'
-                }`}>
-                  {option.label}
-                </Text>
-                {option.subtext && (
-                  <Text className={`text-xs mt-0.5 ${
-                    isSelected ? 'text-emerald-100' : 'text-slate-400'
-                  }`}>
-                    {option.subtext}
-                  </Text>
-                )}
-              </TouchableOpacity>
-            );
-          })}
-        </View>
-        
-        {/* XP Preview */}
-        <View className="mt-6 bg-amber-50 rounded-2xl p-4 flex-row items-center justify-between border border-amber-200">
-          <View className="flex-row items-center">
-            <SparkleIcon />
-            <Text className="text-amber-700 font-medium ml-2">Reward for completing</Text>
-          </View>
-          <Text className="text-xl font-bold text-amber-600">+{xpReward} XP</Text>
-        </View>
-      </View>
-    );
-  };
-
-  const renderDetails = () => (
-    <KeyboardAvoidingView 
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      className="flex-1"
-    >
-      <ScrollView 
-        className="flex-1 px-5"
-        showsVerticalScrollIndicator={false}
-        keyboardShouldPersistTaps="handled"
-      >
-        <Text className="text-2xl font-bold text-slate-800 mb-2">
-          Personalize your goal
-        </Text>
-        <Text className="text-base text-slate-500 mb-6">
-          Give it a name and choose an icon
-        </Text>
-        
-        {/* Icon Selection */}
-        <View className="mb-6">
-          <Text className="text-sm font-semibold text-slate-600 mb-3 uppercase tracking-wide">
-            Choose an Icon
-          </Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-            <View className="flex-row gap-2">
-              {EMOJI_OPTIONS.map((emoji) => (
-                <TouchableOpacity
-                  key={emoji}
-                  onPress={() => setIcon(emoji)}
-                  activeOpacity={0.7}
-                  className={`w-14 h-14 rounded-2xl items-center justify-center border-2 ${
-                    icon === emoji
-                      ? 'bg-emerald-50 border-emerald-400'
-                      : 'bg-white border-slate-200'
-                  }`}
-                >
-                  <Text className="text-2xl">{emoji}</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-          </ScrollView>
-        </View>
-
-        {/* Goal Name */}
-        <View className="mb-6">
-          <Text className="text-sm font-semibold text-slate-600 mb-3 uppercase tracking-wide">
-            Goal Name
-          </Text>
-          <View className="flex-row items-center bg-white rounded-2xl border-2 border-slate-200 px-4 py-1">
-            <Text className="text-2xl mr-3">{icon}</Text>
-            <TextInput
-              className="flex-1 text-lg text-slate-800 py-3"
-              placeholder="e.g., Limit Social Media"
-              placeholderTextColor="#94A3B8"
-              value={name}
-              onChangeText={setName}
-              autoCapitalize="words"
-            />
-          </View>
-        </View>
-
-        {/* Goal Preview Card */}
-        <View className="bg-white rounded-2xl p-5 border-2 border-slate-200 mb-6">
-          <Text className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-4">
-            Preview
-          </Text>
-          
-          <View className="flex-row items-center mb-4">
-            <View className="w-14 h-14 rounded-2xl bg-slate-100 items-center justify-center mr-4">
-              <Text className="text-3xl">{icon}</Text>
-            </View>
-            <View className="flex-1">
-              <Text className="text-lg font-bold text-slate-800" numberOfLines={1}>
-                {name || 'Goal Name'}
-              </Text>
-              <Text className="text-sm text-slate-500">
-                {GOAL_TYPES.find(t => t.type === type)?.label}
-              </Text>
-            </View>
-          </View>
-          
-          <View className="h-px bg-slate-100 mb-4" />
-          
-          <View className="flex-row items-center justify-between">
-            <View>
-              <Text className="text-xs text-slate-400 uppercase">Daily Limit</Text>
-              <Text className="text-base font-semibold text-slate-700">
-                {type === 'app_opens_limit' 
-                  ? `${limit} opens`
-                  : limit >= 60 
-                    ? `${Math.floor(limit / 60)}h ${limit % 60}m`
-                    : `${limit} min`
-                }
-              </Text>
-            </View>
-            {needsAppSelection && selectedApps.length > 0 && (
-              <View>
-                <Text className="text-xs text-slate-400 uppercase text-right">Apps</Text>
-                <Text className="text-base font-semibold text-slate-700">
-                  {selectedApps.length} selected
-                </Text>
-              </View>
-            )}
-            <View className="bg-amber-100 px-3 py-1.5 rounded-lg flex-row items-center">
-              <SparkleIcon />
-              <Text className="text-amber-700 font-bold ml-1">+{xpReward} XP</Text>
-            </View>
-          </View>
-        </View>
-      </ScrollView>
-    </KeyboardAvoidingView>
-  );
-
-  const renderCurrentStep = () => {
-    const step = steps[currentStep];
-    // #region agent log
-    fetch('http://127.0.0.1:7243/ingest/4753647c-c0b8-48ea-b089-08364daf0516',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'create.tsx:renderCurrentStep',message:'Rendering step',data:{currentStep,step,stepsArray:steps},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'F'})}).catch(()=>{});
-    // #endregion
-    switch (step) {
-      case 'type':
-        return renderTypeSelection();
-      case 'apps':
-        return renderAppSelection();
-      case 'limit':
-        return renderLimitSelection();
-      case 'details':
-        return renderDetails();
-      default:
-        // #region agent log
-        fetch('http://127.0.0.1:7243/ingest/4753647c-c0b8-48ea-b089-08364daf0516',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'create.tsx:renderCurrentStep:default',message:'Hit default case - returning null!',data:{step},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H'})}).catch(()=>{});
-        // #endregion
-        return null;
-    }
-  };
-
-  const canProceed = () => {
-    const step = steps[currentStep];
-    switch (step) {
-      case 'type':
-        return true;
-      case 'apps':
-        return selectedApps.length > 0;
-      case 'limit':
-        return limit > 0;
-      case 'details':
-        return name.trim().length > 0;
-      default:
-        return true;
-    }
-  };
-
-  const isLastStep = currentStep === totalSteps - 1;
-
-  // #region agent log
-  fetch('http://127.0.0.1:7243/ingest/4753647c-c0b8-48ea-b089-08364daf0516',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'create.tsx:beforeReturn',message:'About to render main JSX',data:{currentStep,totalSteps,isLastStep,canProceedValue:name.trim().length > 0 || currentStep < totalSteps - 1},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'G'})}).catch(()=>{});
-  // #endregion
+  const hasAppSelection = selectedApps.length > 0 || selectedCategories.length > 0;
 
   return (
-    <SafeAreaView className="flex-1 bg-slate-50">
+    <SafeAreaView style={{ flex: 1, backgroundColor: '#FFFBF2' }}>
       {/* Header */}
-      <View className="flex-row items-center justify-between px-4 py-3">
-        <TouchableOpacity 
-          onPress={() => {
-            // #region agent log
-            fetch('http://127.0.0.1:7243/ingest/4753647c-c0b8-48ea-b089-08364daf0516',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'create.tsx:backButton',message:'Back/Close button pressed',data:{currentStep},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'BACK'})}).catch(()=>{});
-            // #endregion
-            if (currentStep === 0) {
-              // #region agent log
-              fetch('http://127.0.0.1:7243/ingest/4753647c-c0b8-48ea-b089-08364daf0516',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'create.tsx:backButton:close',message:'Attempting to close (dismiss/back)',data:{},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'BACK'})}).catch(()=>{});
-              // #endregion
-              dismissOrGoBack();
-            } else {
-              goToPrevStep();
-            }
-          }} 
-          className="w-10 h-10 items-center justify-center rounded-full bg-white border border-slate-200"
-        >
-          {currentStep === 0 ? <CloseIcon /> : <ArrowLeftIcon />}
+      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingVertical: 12 }}>
+        <TouchableOpacity onPress={dismissOrGoBack} activeOpacity={0.7}>
+          <Text style={{ fontSize: 16, color: '#2D5A3D' }}>Cancel</Text>
         </TouchableOpacity>
-        
-        <View className="flex-1 mx-4">
-          <StepIndicator currentStep={currentStep} totalSteps={totalSteps} />
-        </View>
-        
-        <View className="w-10" />
-      </View>
-
-      {/* Content */}
-      <Animated.View 
-        className="flex-1"
-        style={{
-          opacity: fadeAnim,
-          transform: [{ translateX: slideAnim }],
-        }}
-      >
-        {renderCurrentStep()}
-      </Animated.View>
-
-      {/* Bottom Button */}
-      <View className="px-5 pb-4 pt-2">
-        <TouchableOpacity
-          onPress={isLastStep ? handleSave : goToNextStep}
-          disabled={isLoading || !canProceed()}
-          activeOpacity={0.8}
-          className={`flex-row items-center justify-center py-4 rounded-2xl ${
-            canProceed()
-              ? 'bg-emerald-500'
-              : 'bg-slate-300'
-          }`}
-        >
+        <Text style={{ fontSize: 18, fontWeight: '700', color: '#1A1A1A' }}>
+          {isEditing ? 'Edit Goal' : 'New Goal'}
+        </Text>
+        <TouchableOpacity onPress={handleSave} disabled={isLoading} activeOpacity={0.7}>
           {isLoading ? (
-            <ActivityIndicator color="white" />
+            <ActivityIndicator size="small" color="#2D5A3D" />
           ) : (
-            <>
-              <Text className="text-white text-lg font-bold mr-2">
-                {isLastStep ? (isEditing ? 'Save Changes' : 'Create Goal') : 'Continue'}
-              </Text>
-              {!isLastStep && <ArrowRightIcon />}
-              {isLastStep && <CheckIcon />}
-            </>
+            <Text style={{ fontSize: 16, fontWeight: '600', color: '#2D5A3D' }}>Save</Text>
           )}
         </TouchableOpacity>
       </View>
+
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        style={{ flex: 1 }}
+      >
+        <ScrollView
+          style={{ flex: 1 }}
+          contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 40 }}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+        >
+          {/* Goal Name */}
+          <View style={{ marginTop: 20 }}>
+            <Text style={{ fontSize: 15, fontWeight: '600', color: '#1A1A1A', marginBottom: 8 }}>Goal Name</Text>
+            <TextInput
+              value={name}
+              onChangeText={setName}
+              placeholder="e.g. Social Media Detox"
+              placeholderTextColor="#B0B0B0"
+              autoCapitalize="words"
+              style={{
+                backgroundColor: 'white',
+                borderRadius: 12,
+                borderWidth: 1,
+                borderColor: '#E0E0E0',
+                paddingHorizontal: 16,
+                paddingVertical: 14,
+                fontSize: 16,
+                color: '#1A1A1A',
+              }}
+            />
+          </View>
+
+          {/* Goal Type */}
+          <View style={{ marginTop: 28 }}>
+            <Text style={{ fontSize: 15, fontWeight: '600', color: '#1A1A1A', marginBottom: 12 }}>Goal Type</Text>
+
+            {GOAL_TYPES.map(goalType => {
+              const isSelected = type === goalType.type;
+              return (
+                <TouchableOpacity
+                  key={goalType.type}
+                  onPress={() => {
+                    setType(goalType.type);
+                    if (goalType.type === 'overall_screen_time') {
+                      setSelectedApps([]);
+                      setSelectedCategories([]);
+                    }
+                  }}
+                  activeOpacity={0.7}
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    backgroundColor: 'white',
+                    borderRadius: 12,
+                    borderWidth: isSelected ? 2 : 1,
+                    borderColor: isSelected ? '#2D5A3D' : '#E0E0E0',
+                    paddingHorizontal: 16,
+                    paddingVertical: 14,
+                    marginBottom: 8,
+                  }}
+                >
+                  <View style={{ marginRight: 14 }}>
+                    {goalType.type === 'overall_screen_time' && <ScreenTimeTypeIcon selected={isSelected} />}
+                    {goalType.type === 'app_time_limit' && <AppTimeTypeIcon selected={isSelected} />}
+                    {goalType.type === 'app_opens_limit' && <AppOpensTypeIcon selected={isSelected} />}
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontSize: 15, fontWeight: '600', color: isSelected ? '#2D5A3D' : '#1A1A1A' }}>
+                      {goalType.label}
+                    </Text>
+                    <Text style={{ fontSize: 13, color: '#888', marginTop: 2 }}>
+                      {goalType.description}
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+
+          {/* Selected Apps Section */}
+          {needsAppSelection && (
+            <View style={{ marginTop: 28 }}>
+              <Text style={{ fontSize: 15, fontWeight: '600', color: '#1A1A1A', marginBottom: 12 }}>Selected Apps</Text>
+
+              {!hasAppSelection ? (
+                /* Select Apps Button */
+                <TouchableOpacity
+                  onPress={() => setShowAppPicker(true)}
+                  activeOpacity={0.7}
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    backgroundColor: 'white',
+                    borderRadius: 12,
+                    borderWidth: 1,
+                    borderColor: '#E0E0E0',
+                    paddingHorizontal: 16,
+                    paddingVertical: 16,
+                  }}
+                >
+                  <Text style={{ fontSize: 15, color: '#888' }}>Select Apps</Text>
+                  <ChevronRight />
+                </TouchableOpacity>
+              ) : (
+                <View>
+                  {/* Categories section */}
+                  {selectedCategories.length > 0 && (
+                    <View style={{ marginBottom: 16 }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                          <GridIcon />
+                          <Text style={{ fontSize: 14, fontWeight: '600', color: '#1A1A1A', marginLeft: 8 }}>Category</Text>
+                          <Text style={{ fontSize: 13, color: '#888', marginLeft: 6 }}>{selectedCategories.length}</Text>
+                        </View>
+                        <TouchableOpacity onPress={() => setShowAppPicker(true)} activeOpacity={0.7}>
+                          <Text style={{ fontSize: 13, color: '#2D5A3D', fontWeight: '500' }}>Add / Remove</Text>
+                        </TouchableOpacity>
+                      </View>
+                      {selectedCategories.map(catId => {
+                        const cat = APP_CATEGORIES.find(c => c.id === catId);
+                        if (!cat) return null;
+                        return (
+                          <View
+                            key={catId}
+                            style={{
+                              flexDirection: 'row',
+                              alignItems: 'center',
+                              backgroundColor: 'white',
+                              borderRadius: 10,
+                              borderWidth: 1,
+                              borderColor: '#E8E8E8',
+                              paddingHorizontal: 14,
+                              paddingVertical: 12,
+                              marginBottom: 6,
+                            }}
+                          >
+                            <View style={{ marginRight: 10, width: 22, alignItems: 'center' }}>
+                              <CategoryIcon categoryId={cat.id} size={20} />
+                            </View>
+                            <Text style={{ fontSize: 14, color: '#1A1A1A', fontWeight: '500' }}>{cat.name}</Text>
+                          </View>
+                        );
+                      })}
+                    </View>
+                  )}
+
+                  {/* Individual Apps section */}
+                  {selectedApps.length > 0 && (
+                    <View style={{ marginBottom: 8 }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                          <AppIcon />
+                          <Text style={{ fontSize: 14, fontWeight: '600', color: '#1A1A1A', marginLeft: 8 }}>App</Text>
+                          <Text style={{ fontSize: 13, color: '#2D5A3D', fontWeight: '500', marginLeft: 6 }}>{selectedApps.length}/50 Apps</Text>
+                        </View>
+                        <TouchableOpacity onPress={() => setShowAppPicker(true)} activeOpacity={0.7}>
+                          <Text style={{ fontSize: 13, color: '#2D5A3D', fontWeight: '500' }}>Add / Remove</Text>
+                        </TouchableOpacity>
+                      </View>
+                      {selectedApps.map(appName => {
+                        const allApps = APP_CATEGORIES.flatMap(c => c.apps);
+                        const appInfo = allApps.find(a => a.name === appName);
+                        return (
+                          <View
+                            key={appName}
+                            style={{
+                              flexDirection: 'row',
+                              alignItems: 'center',
+                              backgroundColor: 'white',
+                              borderRadius: 10,
+                              borderWidth: 1,
+                              borderColor: '#E8E8E8',
+                              paddingHorizontal: 14,
+                              paddingVertical: 12,
+                              marginBottom: 6,
+                            }}
+                          >
+                            <View style={{ marginRight: 10, width: 22, alignItems: 'center' }}>
+                              <AppBrandIcon appName={appName} size={20} />
+                            </View>
+                            <Text style={{ fontSize: 14, color: '#1A1A1A', fontWeight: '500' }}>{appName}</Text>
+                          </View>
+                        );
+                      })}
+                    </View>
+                  )}
+
+                  {/* Add more link when both sections empty but hasAppSelection is somehow true */}
+                  {selectedCategories.length === 0 && selectedApps.length === 0 && (
+                    <TouchableOpacity
+                      onPress={() => setShowAppPicker(true)}
+                      activeOpacity={0.7}
+                      style={{
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        backgroundColor: 'white',
+                        borderRadius: 12,
+                        borderWidth: 1,
+                        borderColor: '#E0E0E0',
+                        paddingHorizontal: 16,
+                        paddingVertical: 16,
+                      }}
+                    >
+                      <Text style={{ fontSize: 15, color: '#888' }}>Select Apps</Text>
+                      <ChevronRight />
+                    </TouchableOpacity>
+                  )}
+                </View>
+              )}
+            </View>
+          )}
+
+          {/* Time Goal / Opens Goal */}
+          <View style={{ marginTop: 28 }}>
+            <Text style={{ fontSize: 15, fontWeight: '600', color: '#1A1A1A', marginBottom: 16 }}>
+              {isOpensType ? 'Opens Goal' : 'Time Goal'}
+            </Text>
+
+            {isOpensType ? (
+              /* Opens Goal Picker */
+              <View>
+                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginBottom: 20 }}>
+                  {/* Minus button */}
+                  <TouchableOpacity
+                    onPress={() => adjustOpens(-1)}
+                    activeOpacity={0.7}
+                    style={{
+                      width: 44,
+                      height: 44,
+                      borderRadius: 10,
+                      borderWidth: 1.5,
+                      borderColor: '#1A1A1A',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
+                  >
+                    <Text style={{ fontSize: 22, fontWeight: '600', color: '#1A1A1A', lineHeight: 24 }}>-</Text>
+                  </TouchableOpacity>
+
+                  {/* Opens display */}
+                  <View style={{
+                    marginHorizontal: 20,
+                    borderWidth: 1.5,
+                    borderColor: '#2D5A3D',
+                    borderRadius: 10,
+                    paddingHorizontal: 28,
+                    paddingVertical: 10,
+                    alignItems: 'center',
+                    minWidth: 80,
+                  }}>
+                    <Text style={{ fontSize: 24, fontWeight: '700', color: '#1A1A1A' }}>{limit}</Text>
+                    <Text style={{ fontSize: 11, color: '#888', marginTop: 2 }}>opens</Text>
+                  </View>
+
+                  {/* Plus button */}
+                  <TouchableOpacity
+                    onPress={() => adjustOpens(1)}
+                    activeOpacity={0.7}
+                    style={{
+                      width: 44,
+                      height: 44,
+                      borderRadius: 10,
+                      borderWidth: 1.5,
+                      borderColor: '#1A1A1A',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
+                  >
+                    <Text style={{ fontSize: 22, fontWeight: '600', color: '#1A1A1A', lineHeight: 24 }}>+</Text>
+                  </TouchableOpacity>
+                </View>
+
+                {/* Presets */}
+                <View style={{ flexDirection: 'row', justifyContent: 'center', gap: 10 }}>
+                  {[3, 5, 10, 20].map(preset => (
+                    <TouchableOpacity
+                      key={preset}
+                      onPress={() => setLimit(preset)}
+                      activeOpacity={0.7}
+                      style={{
+                        paddingHorizontal: 18,
+                        paddingVertical: 10,
+                        borderRadius: 20,
+                        borderWidth: 1.5,
+                        borderColor: limit === preset ? '#2D5A3D' : '#1A1A1A',
+                        backgroundColor: limit === preset ? '#E8F5E9' : 'transparent',
+                      }}
+                    >
+                      <Text style={{ fontSize: 14, fontWeight: '600', color: limit === preset ? '#2D5A3D' : '#1A1A1A' }}>
+                        {preset}x
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
+            ) : (
+              /* Time Goal Picker */
+              <View>
+                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginBottom: 20 }}>
+                  {/* Minus button */}
+                  <TouchableOpacity
+                    onPress={() => adjustTime(-30)}
+                    activeOpacity={0.7}
+                    style={{
+                      width: 44,
+                      height: 44,
+                      borderRadius: 10,
+                      borderWidth: 1.5,
+                      borderColor: '#1A1A1A',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
+                  >
+                    <Text style={{ fontSize: 22, fontWeight: '600', color: '#1A1A1A', lineHeight: 24 }}>-</Text>
+                  </TouchableOpacity>
+
+                  {/* Hours */}
+                  <View style={{
+                    marginLeft: 16,
+                    borderWidth: 1.5,
+                    borderColor: '#2D5A3D',
+                    borderRadius: 10,
+                    paddingHorizontal: 16,
+                    paddingVertical: 10,
+                    alignItems: 'center',
+                    minWidth: 56,
+                  }}>
+                    <Text style={{ fontSize: 24, fontWeight: '700', color: '#1A1A1A' }}>{hours}</Text>
+                  </View>
+
+                  {/* Colon separator */}
+                  <Text style={{ fontSize: 24, fontWeight: '700', color: '#1A1A1A', marginHorizontal: 8 }}>:</Text>
+
+                  {/* Minutes */}
+                  <View style={{
+                    borderWidth: 1.5,
+                    borderColor: '#2D5A3D',
+                    borderRadius: 10,
+                    paddingHorizontal: 16,
+                    paddingVertical: 10,
+                    alignItems: 'center',
+                    minWidth: 56,
+                  }}>
+                    <Text style={{ fontSize: 24, fontWeight: '700', color: '#1A1A1A' }}>{mins.toString().padStart(2, '0')}</Text>
+                  </View>
+
+                  {/* Plus button */}
+                  <TouchableOpacity
+                    onPress={() => adjustTime(30)}
+                    activeOpacity={0.7}
+                    style={{
+                      marginLeft: 16,
+                      width: 44,
+                      height: 44,
+                      borderRadius: 10,
+                      borderWidth: 1.5,
+                      borderColor: '#1A1A1A',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
+                  >
+                    <Text style={{ fontSize: 22, fontWeight: '600', color: '#1A1A1A', lineHeight: 24 }}>+</Text>
+                  </TouchableOpacity>
+                </View>
+
+                {/* Labels */}
+                <View style={{ flexDirection: 'row', justifyContent: 'center', marginBottom: 20, marginTop: -12 }}>
+                  <Text style={{ fontSize: 12, color: '#888', marginLeft: 60, width: 56, textAlign: 'center' }}>hours</Text>
+                  <Text style={{ fontSize: 12, color: '#888', marginLeft: 28, width: 56, textAlign: 'center' }}>mins</Text>
+                </View>
+
+                {/* Presets */}
+                <View style={{ flexDirection: 'row', justifyContent: 'center', gap: 10 }}>
+                  {[
+                    { label: '30m', value: 30 },
+                    { label: '1h', value: 60 },
+                    { label: '2h', value: 120 },
+                    { label: '3h', value: 180 },
+                  ].map(preset => (
+                    <TouchableOpacity
+                      key={preset.value}
+                      onPress={() => setLimit(preset.value)}
+                      activeOpacity={0.7}
+                      style={{
+                        paddingHorizontal: 18,
+                        paddingVertical: 10,
+                        borderRadius: 20,
+                        borderWidth: 1.5,
+                        borderColor: limit === preset.value ? '#2D5A3D' : '#1A1A1A',
+                        backgroundColor: limit === preset.value ? '#E8F5E9' : 'transparent',
+                      }}
+                    >
+                      <Text style={{ fontSize: 14, fontWeight: '600', color: limit === preset.value ? '#2D5A3D' : '#1A1A1A' }}>
+                        {preset.label}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
+            )}
+          </View>
+        </ScrollView>
+      </KeyboardAvoidingView>
+
+      {/* App Picker Modal */}
+      <AppPickerModal
+        visible={showAppPicker}
+        availableCategories={deviceCategories}
+        isDeviceFiltered={isDeviceFiltered}
+        initialCategories={selectedCategories}
+        initialApps={selectedApps}
+        onSave={(categories, apps) => {
+          setSelectedCategories(categories);
+          setSelectedApps(apps);
+          setShowAppPicker(false);
+        }}
+        onCancel={() => setShowAppPicker(false)}
+      />
     </SafeAreaView>
   );
 }

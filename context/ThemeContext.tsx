@@ -4,17 +4,31 @@ interface ThemeContextType {
   colors: typeof colors;
 }
 
-// App colors (single light theme)
+// ── Design System ──────────────────────────────────────────────
+// Single source of truth for the app's color palette.
 const colors = {
-  background: '#FFFBF2',
-  surface: '#F1EADB',
-  card: '#F1EADB',
-  text: '#232323',
-  textSecondary: '#929292',
-  border: '#000000',
-  primary: '#1052A0',
-  icon: '#000000',
-  divider: 'rgba(0,0,0,0.12)',
+  // Backgrounds
+  background: '#FFFBF2',       // warm cream — used as the root background
+  surface: '#F5F5F0',          // light gray — input fields, secondary surfaces
+  card: '#FFFFFF',             // white — primary card background
+
+  // Text
+  text: '#1A1A1A',            // primary text
+  textSecondary: '#8B9D77',   // secondary / muted text
+
+  // Brand
+  primary: '#2D5A3D',         // deep forest green — buttons, active states
+  primaryLight: '#E8F5E9',    // very light green — icon backgrounds, badges
+  accent: '#F4A261',          // warm orange — XP, streaks, highlights
+  danger: '#EF4444',          // red — destructive actions, errors
+
+  // Borders & Dividers
+  border: '#E8E8E8',          // soft gray border
+  divider: '#F0EDE5',         // subtle divider
+
+  // Icons
+  icon: '#1A1A1A',            // default icon color
+  iconSecondary: '#8B9D77',   // muted icon color
 };
 
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);

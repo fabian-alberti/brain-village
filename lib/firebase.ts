@@ -31,7 +31,6 @@ import { User, Goal, NewGoal, DailyLog } from './types';
 import { calculateXpReward, getLevelFromXp } from './xp';
 
 // Firebase configuration
-// Note: In production, use environment variables
 const firebaseConfig = {
     apiKey: "AIzaSyB8iABywpUX-I5BAX7CnJtiqkV9wQJH9zo",
     authDomain: "brain-village-c343e.firebaseapp.com",
@@ -45,22 +44,16 @@ const firebaseConfig = {
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
 
-// Initialize Auth - simplified for React Native
+// Initialize Auth
 const auth = getAuth(app);
 
 // Initialize Firestore
-// Firestore can appear "stuck offline" on web networks that block WebChannel.
-// Long-polling is more reliable and fixes writes hanging forever.
 const db =
   Platform.OS === 'web'
     ? initializeFirestore(app, {
         experimentalAutoDetectLongPolling: true,
       })
     : getFirestore(app);
-
-// #region agent log
-fetch('http://127.0.0.1:7243/ingest/4753647c-c0b8-48ea-b089-08364daf0516',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'firebase.ts:initFirestore',message:'Initialized Firestore instance',data:{platform:Platform.OS,longPolling:Platform.OS==='web'},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'FIREBASE'})}).catch(()=>{});
-// #endregion
 
 export { auth, db };
 
@@ -72,10 +65,7 @@ export async function signIn(email: string, password: string) {
 
 export async function signUp(email: string, password: string, displayName: string) {
   const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-  
-  // Create user document in Firestore
   await createUserDocument(userCredential.user.uid, email, displayName);
-  
   return userCredential;
 }
 
@@ -128,18 +118,11 @@ export async function updateUserData(userId: string, data: Partial<User>) {
 export function subscribeToUser(userId: string, callback: (user: User | null) => void) {
   const userRef = doc(db, 'users', userId);
   return onSnapshot(userRef, (snap) => {
-    // #region agent log
-    fetch('http://127.0.0.1:7243/ingest/4753647c-c0b8-48ea-b089-08364daf0516',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'firebase.ts:subscribeToUser:snapshot',message:'onSnapshot(user) snapshot received',data:{exists:snap.exists(),fromCache:snap.metadata.fromCache,hasPendingWrites:snap.metadata.hasPendingWrites},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'FIREBASE'})}).catch(()=>{});
-    // #endregion
     if (snap.exists()) {
       callback({ id: snap.id, ...snap.data() } as User);
     } else {
       callback(null);
     }
-  }, (error) => {
-    // #region agent log
-    fetch('http://127.0.0.1:7243/ingest/4753647c-c0b8-48ea-b089-08364daf0516',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'firebase.ts:subscribeToUser:error',message:'onSnapshot(user) error',data:{error:String(error),code:(error as any)?.code,message:(error as any)?.message},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'FIREBASE'})}).catch(()=>{});
-    // #endregion
   });
 }
 
@@ -156,15 +139,12 @@ function withTimeout<T>(promise: Promise<T>, timeoutMs: number, errorMessage: st
 }
 
 export async function createGoal(userId: string, goalData: NewGoal): Promise<string> {
-  // #region agent log
-  fetch('http://127.0.0.1:7243/ingest/4753647c-c0b8-48ea-b089-08364daf0516',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'firebase.ts:createGoal',message:'createGoal started',data:{goalData,online:typeof navigator !== 'undefined' ? navigator.onLine : null,hasAuthUser:!!auth.currentUser,authUidMatchesUserId:auth.currentUser?.uid === userId},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'FIREBASE'})}).catch(()=>{});
-  // #endregion
-  
   const goalsRef = collection(db, 'users', userId, 'goals');
   const xpReward = calculateXpReward(goalData.type, goalData.limit);
   
   const goal: Omit<Goal, 'id'> = {
     ...goalData,
+    targetCategories: goalData.targetCategories || [],
     currentProgress: 0,
     xpReward,
     isCompleted: false,
@@ -173,41 +153,12 @@ export async function createGoal(userId: string, goalData: NewGoal): Promise<str
     updatedAt: Timestamp.now(),
   };
   
-  // #region agent log
-  fetch('http://127.0.0.1:7243/ingest/4753647c-c0b8-48ea-b089-08364daf0516',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'firebase.ts:createGoal:beforeAddDoc',message:'About to call addDoc',data:{goal},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'FIREBASE'})}).catch(()=>{});
-  // #endregion
-  
-  try {
-    const addPromise = addDoc(goalsRef, goal);
-
-    // Log if/when the underlying addDoc promise eventually resolves/rejects.
-    // This helps distinguish "permission-denied" (fast reject) vs "never reaches server" (hangs).
-    // #region agent log
-    addPromise
-      .then((docRef) => {
-        fetch('http://127.0.0.1:7243/ingest/4753647c-c0b8-48ea-b089-08364daf0516',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'firebase.ts:createGoal:addDoc:resolved',message:'addDoc promise resolved',data:{docId:docRef.id},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'FIREBASE'})}).catch(()=>{});
-      })
-      .catch((error) => {
-        fetch('http://127.0.0.1:7243/ingest/4753647c-c0b8-48ea-b089-08364daf0516',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'firebase.ts:createGoal:addDoc:rejected',message:'addDoc promise rejected',data:{error:String(error),code:(error as any)?.code,message:(error as any)?.message},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'FIREBASE'})}).catch(()=>{});
-      });
-    // #endregion
-
-    // Add 10 second timeout - Firestore can hang on permission issues
-    const docRef = await withTimeout(
-      addPromise,
-      10000,
-      'Firebase write timed out. Please check your Firestore security rules in Firebase Console.'
-    );
-    // #region agent log
-    fetch('http://127.0.0.1:7243/ingest/4753647c-c0b8-48ea-b089-08364daf0516',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'firebase.ts:createGoal:success',message:'addDoc succeeded',data:{docId:docRef.id},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'FIREBASE'})}).catch(()=>{});
-    // #endregion
-    return docRef.id;
-  } catch (error) {
-    // #region agent log
-    fetch('http://127.0.0.1:7243/ingest/4753647c-c0b8-48ea-b089-08364daf0516',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'firebase.ts:createGoal:error',message:'addDoc failed',data:{error:String(error),code:(error as any)?.code,message:(error as any)?.message},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'FIREBASE'})}).catch(()=>{});
-    // #endregion
-    throw error;
-  }
+  const docRef = await withTimeout(
+    addDoc(goalsRef, goal),
+    10000,
+    'Firebase write timed out. Please check your Firestore security rules.'
+  );
+  return docRef.id;
 }
 
 export async function updateGoal(userId: string, goalId: string, data: Partial<Goal>) {
@@ -225,18 +176,17 @@ export function subscribeToGoals(userId: string, callback: (goals: Goal[]) => vo
   const q = query(goalsRef, orderBy('createdAt', 'desc'));
   
   return onSnapshot(q, (snapshot) => {
-    // #region agent log
-    fetch('http://127.0.0.1:7243/ingest/4753647c-c0b8-48ea-b089-08364daf0516',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'firebase.ts:subscribeToGoals:snapshot',message:'onSnapshot(goals) snapshot received',data:{size:snapshot.size,fromCache:snapshot.metadata.fromCache,hasPendingWrites:snapshot.metadata.hasPendingWrites},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'FIREBASE'})}).catch(()=>{});
-    // #endregion
-    const goals = snapshot.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data()
-    })) as Goal[];
+    const goals = snapshot.docs.map(d => {
+      const data = d.data();
+      return {
+        id: d.id,
+        ...data,
+        // Ensure targetCategories exists for backward compatibility
+        targetCategories: data.targetCategories || [],
+        targetApps: data.targetApps || [],
+      } as Goal;
+    });
     callback(goals);
-  }, (error) => {
-    // #region agent log
-    fetch('http://127.0.0.1:7243/ingest/4753647c-c0b8-48ea-b089-08364daf0516',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'firebase.ts:subscribeToGoals:error',message:'onSnapshot(goals) error',data:{error:String(error),code:(error as any)?.code,message:(error as any)?.message},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'FIREBASE'})}).catch(()=>{});
-    // #endregion
   });
 }
 
@@ -245,10 +195,15 @@ export async function getGoals(userId: string): Promise<Goal[]> {
   const q = query(goalsRef, orderBy('createdAt', 'desc'));
   const snapshot = await getDocs(q);
   
-  return snapshot.docs.map(doc => ({
-    id: doc.id,
-    ...doc.data()
-  })) as Goal[];
+  return snapshot.docs.map(d => {
+    const data = d.data();
+    return {
+      id: d.id,
+      ...data,
+      targetCategories: data.targetCategories || [],
+      targetApps: data.targetApps || [],
+    } as Goal;
+  });
 }
 
 // ============ PROGRESS LOGGING ============
@@ -259,7 +214,6 @@ export async function logProgress(
   amount: number,
   appName?: string
 ) {
-  // Update goal progress
   const goalRef = doc(db, 'users', userId, 'goals', goalId);
   const goalSnap = await getDoc(goalRef);
   
@@ -314,7 +268,6 @@ export async function completeGoal(userId: string, goalId: string) {
   
   const goal = { id: goalSnap.id, ...goalSnap.data() } as Goal;
   
-  // Mark goal as completed
   await updateDoc(goalRef, {
     isCompleted: true,
     consecutiveMisses: 0,
@@ -378,7 +331,6 @@ export async function failGoal(userId: string, goalId: string) {
     await updateDoc(userRef, {
       consecutiveMisses: totalMisses,
       currentStreak: 0,
-      // Village becomes destroyed after 2 consecutive misses
       villageState: totalMisses >= 2 ? 'destroyed' : user.villageState,
     });
   }
@@ -391,10 +343,9 @@ export async function resetDailyProgress(userId: string) {
   
   const batch: Promise<void>[] = [];
   
-  snapshot.docs.forEach(doc => {
-    const goal = doc.data() as Omit<Goal, 'id'>;
+  snapshot.docs.forEach(d => {
     batch.push(
-      updateDoc(doc.ref, {
+      updateDoc(d.ref, {
         currentProgress: 0,
         isCompleted: false,
         updatedAt: Timestamp.now(),
