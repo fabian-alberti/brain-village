@@ -10,407 +10,465 @@ interface VillageIllustrationProps {
   height?: number;
 }
 
-// Colors
+// ── Color palettes ──────────────────────────────────────────────
+
 const COLORS = {
   flourishing: {
-    sky: '#87CEEB',
+    skyTop: '#87CEEB',
+    skyBottom: '#C5E8F7',
     sun: '#F4A261',
+    sunGlow: '#F4A26130',
     ground: '#8B9D77',
+    groundDark: '#7A8C68',
     grass: '#6B8E63',
+    grassLight: '#A8C99B',
+    path: '#D4C4A8',
+    pathEdge: '#C4B498',
     tree: '#2D5A3D',
+    treeDark: '#1E4030',
     trunk: '#8B4513',
     building: '#F4A261',
-    roof: '#9B2335',
-    door: '#2D5A3D',
-    window: '#87CEEB',
-    water: '#4A90D9',
-    stone: '#A0A0A0',
-    flower: '#FF69B4',
+    buildingLight: '#F7BD8A',
+    roof: '#C0392B',
+    door: '#5C3A1E',
+    window: '#AED9F0',
+    stone: '#B0B0B0',
+    flower1: '#FF69B4',
+    flower2: '#FFD700',
+    flower3: '#FF6B6B',
+    cloud: '#FFFFFF',
+    flag: '#E74C3C',
   },
   destroyed: {
-    sky: '#8B8B8B',
-    sun: '#C0C0C0',
-    ground: '#5A5A5A',
-    grass: '#4A4A4A',
+    skyTop: '#6B6B6B',
+    skyBottom: '#8B8B8B',
+    sun: '#A0A0A0',
+    sunGlow: '#A0A0A020',
+    ground: '#5A5A4A',
+    groundDark: '#4A4A3A',
+    grass: '#5A5A4A',
+    grassLight: '#6A6A5A',
+    path: '#6A6A5A',
+    pathEdge: '#5A5A4A',
     tree: '#3D3D3D',
+    treeDark: '#2D2D2D',
     trunk: '#4A3728',
     building: '#8B7355',
+    buildingLight: '#9B836A',
     roof: '#5A3D3D',
     door: '#3D3D3D',
-    window: '#4A4A4A',
-    water: '#4A5A6A',
+    window: '#5A5A5A',
     stone: '#6A6A6A',
-    flower: '#5A4A4A',
+    flower1: '#5A4A4A',
+    flower2: '#5A4A4A',
+    flower3: '#5A4A4A',
+    cloud: '#9A9A9A',
+    flag: '#5A3D3D',
   },
 };
 
-// Level 1: Small hut / Barren land
-function Level1({ state, width, height }: { state: VillageState; width: number; height: number }) {
-  const c = COLORS[state];
+type ColorSet = typeof COLORS.flourishing;
+
+interface BuildingProps {
+  cx: number;
+  baseY: number;
+  c: ColorSet;
+  destroyed: boolean;
+}
+
+// ── Empty Plot (foundation for unbuilt buildings) ───────────────
+
+function EmptyPlot({ cx, baseY, c }: { cx: number; baseY: number; c: ColorSet }) {
   return (
-    <Svg width={width} height={height} viewBox="0 0 300 200">
-      {/* Sky */}
-      <Rect x="0" y="0" width="300" height="200" fill={c.sky} />
-      
-      {/* Sun */}
-      <Circle cx="250" cy="40" r="25" fill={c.sun} />
-      
-      {/* Ground */}
-      <Path d="M0 140 Q150 130 300 140 L300 200 L0 200 Z" fill={c.ground} />
-      
-      {state === 'flourishing' ? (
-        <G>
-          {/* Small hut */}
-          <Rect x="120" y="100" width="60" height="40" fill={c.building} />
-          <Path d="M110 100 L150 65 L190 100 Z" fill={c.roof} />
-          <Rect x="140" y="115" width="20" height="25" fill={c.door} />
-          
-          {/* Sapling */}
-          <Rect x="220" y="115" width="6" height="25" fill={c.trunk} />
-          <Circle cx="223" cy="105" r="15" fill={c.tree} />
-          
-          {/* Small flowers */}
-          <Circle cx="80" cy="145" r="4" fill={c.flower} />
-          <Circle cx="95" cy="150" r="3" fill={c.flower} />
-          <Circle cx="260" cy="148" r="4" fill={c.flower} />
-        </G>
-      ) : (
-        <G>
-          {/* Barren land with dead tree */}
-          <Path d="M200 140 L210 90 L205 90 L215 60 L210 60 L220 40 L230 60 L225 60 L235 90 L230 90 L240 140" 
-                fill={c.trunk} />
-          
-          {/* Rocks */}
-          <Ellipse cx="100" cy="150" rx="20" ry="10" fill={c.stone} />
-          <Ellipse cx="150" cy="155" rx="15" ry="8" fill={c.stone} />
-          
-          {/* Cracks in ground */}
-          <Path d="M50 160 L70 155 L90 165" stroke={c.grass} strokeWidth="2" fill="none" />
-          <Path d="M250 155 L270 160 L280 150" stroke={c.grass} strokeWidth="2" fill="none" />
-        </G>
-      )}
-    </Svg>
+    <G>
+      <Rect
+        x={cx - 16}
+        y={baseY - 4}
+        width={32}
+        height={6}
+        rx={2}
+        fill={c.stone}
+        opacity={0.35}
+      />
+      <Rect
+        x={cx - 14}
+        y={baseY - 26}
+        width={28}
+        height={24}
+        rx={3}
+        fill="none"
+        stroke={c.stone}
+        strokeWidth={1}
+        strokeDasharray="3,3"
+        opacity={0.25}
+      />
+    </G>
   );
 }
 
-// Level 2: Cottage with garden / Broken fence
-function Level2({ state, width, height }: { state: VillageState; width: number; height: number }) {
-  const c = COLORS[state];
+// ── Hut (Level 1 — center) ─────────────────────────────────────
+
+function HutBuilding({ cx, baseY, c, destroyed }: BuildingProps) {
   return (
-    <Svg width={width} height={height} viewBox="0 0 300 200">
-      <Rect x="0" y="0" width="300" height="200" fill={c.sky} />
-      <Circle cx="250" cy="40" r="25" fill={c.sun} />
-      <Path d="M0 130 Q150 120 300 130 L300 200 L0 200 Z" fill={c.ground} />
-      
-      {state === 'flourishing' ? (
+    <G>
+      <Rect x={cx - 17} y={baseY - 28} width={34} height={28} fill={c.building} />
+      <Path
+        d={`M${cx - 22} ${baseY - 28} L${cx} ${baseY - 48} L${cx + 22} ${baseY - 28} Z`}
+        fill={c.roof}
+      />
+      <Rect x={cx - 5} y={baseY - 15} width={10} height={15} rx={5} fill={c.door} />
+      <Rect x={cx - 14} y={baseY - 22} width={7} height={7} rx={1} fill={c.window} />
+      {destroyed && (
         <G>
-          {/* Cottage */}
-          <Rect x="100" y="85" width="80" height="55" fill={c.building} />
-          <Path d="M90 85 L140 45 L190 85 Z" fill={c.roof} />
-          <Rect x="125" y="110" width="20" height="30" fill={c.door} />
-          <Rect x="155" y="95" width="15" height="15" fill={c.window} />
-          <Rect x="110" y="95" width="15" height="15" fill={c.window} />
-          
-          {/* Chimney */}
-          <Rect x="160" y="50" width="12" height="25" fill={c.building} />
-          
-          {/* Garden fence */}
-          <Path d="M50 140 L50 155 M60 140 L60 155 M70 140 L70 155 M80 140 L80 155" 
-                stroke={c.trunk} strokeWidth="3" />
-          <Path d="M45 145 L85 145 M45 152 L85 152" stroke={c.trunk} strokeWidth="2" />
-          
-          {/* Tree */}
-          <Rect x="230" y="100" width="10" height="40" fill={c.trunk} />
-          <Circle cx="235" cy="85" r="25" fill={c.tree} />
-          
-          {/* Flowers in garden */}
-          <Circle cx="55" cy="160" r="5" fill={c.flower} />
-          <Circle cx="70" cy="162" r="4" fill="#FFD700" />
-          <Circle cx="62" cy="158" r="4" fill={c.flower} />
-        </G>
-      ) : (
-        <G>
-          {/* Broken cottage */}
-          <Rect x="100" y="90" width="80" height="50" fill={c.building} />
-          <Path d="M90 90 L140 55 L190 90 Z" fill={c.roof} />
-          <Path d="M130 60 L150 90" stroke={c.sky} strokeWidth="3" /> {/* Crack in roof */}
-          <Rect x="125" y="110" width="20" height="30" fill={c.door} />
-          <Path d="M125 110 L145 140" stroke={c.trunk} strokeWidth="2" /> {/* Broken door */}
-          
-          {/* Broken fence */}
-          <Path d="M50 145 L50 160 M70 142 L70 160 M80 148 L80 160" 
-                stroke={c.trunk} strokeWidth="3" />
-          <Path d="M45 155 L85 155" stroke={c.trunk} strokeWidth="2" />
-          
-          {/* Weeds */}
-          <Path d="M55 160 C55 150 60 150 60 160" stroke={c.grass} strokeWidth="2" fill="none" />
-          <Path d="M65 158 C65 148 70 148 70 158" stroke={c.grass} strokeWidth="2" fill="none" />
-          <Path d="M240 150 C240 140 245 140 245 150" stroke={c.grass} strokeWidth="2" fill="none" />
+          <Path
+            d={`M${cx - 8} ${baseY - 40} L${cx - 2} ${baseY - 28}`}
+            stroke={c.groundDark}
+            strokeWidth={1.5}
+            fill="none"
+          />
+          <Path
+            d={`M${cx + 5} ${baseY - 28} L${cx + 10} ${baseY - 10}`}
+            stroke={c.groundDark}
+            strokeWidth={1.2}
+            fill="none"
+          />
         </G>
       )}
-    </Svg>
+    </G>
   );
 }
 
-// Level 3: Town square / Crumbling buildings
-function Level3({ state, width, height }: { state: VillageState; width: number; height: number }) {
-  const c = COLORS[state];
+// ── Cottage (Level 2 — center-left) ────────────────────────────
+
+function CottageBuilding({ cx, baseY, c, destroyed }: BuildingProps) {
   return (
-    <Svg width={width} height={height} viewBox="0 0 300 200">
-      <Rect x="0" y="0" width="300" height="200" fill={c.sky} />
-      <Circle cx="250" cy="35" r="25" fill={c.sun} />
-      <Path d="M0 120 Q150 110 300 120 L300 200 L0 200 Z" fill={c.ground} />
-      
-      {state === 'flourishing' ? (
+    <G>
+      <Rect x={cx - 20} y={baseY - 32} width={40} height={32} fill={c.building} />
+      <Path
+        d={`M${cx - 24} ${baseY - 32} L${cx} ${baseY - 50} L${cx + 24} ${baseY - 32} Z`}
+        fill={c.roof}
+      />
+      {/* Chimney */}
+      <Rect x={cx + 8} y={baseY - 46} width={7} height={12} fill={c.buildingLight} />
+      <Rect x={cx - 5} y={baseY - 16} width={10} height={16} rx={5} fill={c.door} />
+      <Rect x={cx - 16} y={baseY - 26} width={8} height={8} rx={1} fill={c.window} />
+      <Rect x={cx + 8} y={baseY - 26} width={8} height={8} rx={1} fill={c.window} />
+      {destroyed && (
         <G>
-          {/* Main building */}
-          <Rect x="110" y="70" width="80" height="70" fill={c.building} />
-          <Path d="M100 70 L150 30 L200 70 Z" fill={c.roof} />
-          <Rect x="135" y="105" width="25" height="35" fill={c.door} />
-          <Rect x="115" y="80" width="18" height="18" fill={c.window} />
-          <Rect x="162" y="80" width="18" height="18" fill={c.window} />
-          
-          {/* Side building 1 */}
-          <Rect x="30" y="90" width="50" height="50" fill={c.building} />
-          <Path d="M25 90 L55 60 L85 90 Z" fill={c.roof} />
-          <Rect x="45" y="110" width="18" height="30" fill={c.door} />
-          
-          {/* Side building 2 */}
-          <Rect x="220" y="85" width="55" height="55" fill={c.building} />
-          <Path d="M215 85 L247 55 L280 85 Z" fill={c.roof} />
-          <Rect x="235" y="105" width="20" height="35" fill={c.door} />
-          <Rect x="260" y="95" width="12" height="12" fill={c.window} />
-          
-          {/* Market stall */}
-          <Rect x="130" y="145" width="40" height="20" fill={c.trunk} />
-          <Path d="M125 145 L150 130 L175 145 Z" fill={c.flower} />
-          
-          {/* Path stones */}
-          <Ellipse cx="90" cy="165" rx="12" ry="5" fill={c.stone} />
-          <Ellipse cx="115" cy="168" rx="10" ry="4" fill={c.stone} />
-          <Ellipse cx="185" cy="167" rx="11" ry="5" fill={c.stone} />
-          <Ellipse cx="210" cy="165" rx="10" ry="4" fill={c.stone} />
-        </G>
-      ) : (
-        <G>
-          {/* Crumbling main building */}
-          <Rect x="110" y="75" width="80" height="65" fill={c.building} />
-          <Path d="M100 75 L150 40 L200 75 Z" fill={c.roof} />
-          <Path d="M125 40 L135 75 M175 45 L165 75" stroke={c.sky} strokeWidth="3" />
-          <Rect x="135" y="105" width="25" height="35" fill={c.door} />
-          <Rect x="115" y="85" width="18" height="18" fill={c.window} />
-          <Path d="M115 85 L133 103" stroke={c.trunk} strokeWidth="2" />
-          
-          {/* Ruined side buildings */}
-          <Rect x="30" y="100" width="50" height="40" fill={c.building} />
-          <Path d="M30 100 L55 75 L80 100" stroke={c.roof} strokeWidth="3" fill="none" />
-          
-          <Rect x="220" y="95" width="55" height="45" fill={c.building} />
-          <Path d="M220 95 L247 70 L275 95" stroke={c.roof} strokeWidth="3" fill="none" />
-          <Path d="M250 95 L260 140" stroke={c.sky} strokeWidth="4" />
-          
-          {/* Debris */}
-          <Ellipse cx="150" cy="155" rx="15" ry="6" fill={c.stone} />
-          <Ellipse cx="100" cy="160" rx="10" ry="5" fill={c.stone} />
+          <Path
+            d={`M${cx - 10} ${baseY - 45} L${cx - 3} ${baseY - 32}`}
+            stroke={c.groundDark}
+            strokeWidth={1.5}
+            fill="none"
+          />
+          <Path
+            d={`M${cx - 16} ${baseY - 26} L${cx - 8} ${baseY - 18}`}
+            stroke={c.trunk}
+            strokeWidth={1.2}
+            fill="none"
+          />
         </G>
       )}
-    </Svg>
+    </G>
   );
 }
 
-// Level 4: Busy village with fountain / Abandoned village
-function Level4({ state, width, height }: { state: VillageState; width: number; height: number }) {
-  const c = COLORS[state];
+// ── Market (Level 3 — center-right) ────────────────────────────
+
+function MarketBuilding({ cx, baseY, c, destroyed }: BuildingProps) {
   return (
-    <Svg width={width} height={height} viewBox="0 0 300 200">
-      <Rect x="0" y="0" width="300" height="200" fill={c.sky} />
-      <Circle cx="250" cy="30" r="25" fill={c.sun} />
-      <Path d="M0 115 Q150 105 300 115 L300 200 L0 200 Z" fill={c.ground} />
-      
-      {state === 'flourishing' ? (
-        <G>
-          {/* Large central building */}
-          <Rect x="100" y="55" width="100" height="85" fill={c.building} />
-          <Path d="M90 55 L150 15 L210 55 Z" fill={c.roof} />
-          <Rect x="135" y="100" width="30" height="40" fill={c.door} />
-          <Rect x="105" y="65" width="20" height="20" fill={c.window} />
-          <Rect x="175" y="65" width="20" height="20" fill={c.window} />
-          <Circle cx="150" cy="75" r="12" fill={c.window} /> {/* Round window */}
-          
-          {/* Clock tower */}
-          <Rect x="140" y="15" width="20" height="25" fill={c.building} />
-          <Circle cx="150" cy="22" r="8" fill={c.window} />
-          
-          {/* Side buildings */}
-          <Rect x="15" y="75" width="60" height="65" fill={c.building} />
-          <Path d="M10 75 L45 45 L80 75 Z" fill={c.roof} />
-          <Rect x="35" y="105" width="18" height="35" fill={c.door} />
-          
-          <Rect x="225" y="70" width="65" height="70" fill={c.building} />
-          <Path d="M220 70 L257 40 L295 70 Z" fill={c.roof} />
-          <Rect x="245" y="100" width="22" height="40" fill={c.door} />
-          
-          {/* Fountain */}
-          <Ellipse cx="150" cy="165" rx="30" ry="12" fill={c.water} />
-          <Rect x="145" y="150" width="10" height="15" fill={c.stone} />
-          <Circle cx="150" cy="148" r="8" fill={c.water} />
-          
-          {/* Trees */}
-          <Rect x="85" y="125" width="8" height="25" fill={c.trunk} />
-          <Circle cx="89" cy="115" r="18" fill={c.tree} />
-          
-          <Rect x="207" y="125" width="8" height="25" fill={c.trunk} />
-          <Circle cx="211" cy="115" r="18" fill={c.tree} />
-        </G>
-      ) : (
-        <G>
-          {/* Abandoned central building */}
-          <Rect x="100" y="60" width="100" height="80" fill={c.building} />
-          <Path d="M90 60 L150 25 L210 60 Z" fill={c.roof} />
-          <Path d="M120 25 L130 60 M180 30 L170 60" stroke={c.sky} strokeWidth="4" />
-          <Rect x="135" y="100" width="30" height="40" fill={c.door} />
-          <Path d="M135 100 L165 140" stroke={c.trunk} strokeWidth="2" />
-          
-          {/* Boarded windows */}
-          <Rect x="105" y="70" width="20" height="20" fill={c.window} />
-          <Path d="M105 70 L125 90 M105 90 L125 70" stroke={c.trunk} strokeWidth="3" />
-          <Rect x="175" y="70" width="20" height="20" fill={c.window} />
-          <Path d="M175 70 L195 90 M175 90 L195 70" stroke={c.trunk} strokeWidth="3" />
-          
-          {/* Ruined side buildings */}
-          <Rect x="15" y="85" width="60" height="55" fill={c.building} />
-          <Path d="M15 85 L45 60 L75 85" stroke={c.roof} strokeWidth="3" fill="none" />
-          
-          <Rect x="225" y="80" width="65" height="60" fill={c.building} />
-          <Path d="M225 80 L257 55 L290 80" stroke={c.roof} strokeWidth="3" fill="none" />
-          
-          {/* Dried up fountain */}
-          <Ellipse cx="150" cy="165" rx="30" ry="12" fill={c.stone} />
-          <Rect x="145" y="150" width="10" height="15" fill={c.stone} />
-          <Path d="M140 160 L160 160" stroke={c.grass} strokeWidth="2" />
-          
-          {/* Dead trees */}
-          <Path d="M85 150 L89 120 L85 120 L89 100 L93 120 L89 120 L93 150" fill={c.trunk} />
-          <Path d="M207 150 L211 120 L207 120 L211 100 L215 120 L211 120 L215 150" fill={c.trunk} />
-        </G>
+    <G>
+      {/* Counter / base */}
+      <Rect x={cx - 17} y={baseY - 16} width={34} height={16} fill={c.trunk} />
+      {/* Awning supports */}
+      <Rect x={cx - 16} y={baseY - 30} width={2} height={14} fill={c.trunk} />
+      <Rect x={cx + 14} y={baseY - 30} width={2} height={14} fill={c.trunk} />
+      {/* Awning */}
+      <Path
+        d={`M${cx - 20} ${baseY - 30} L${cx} ${baseY - 40} L${cx + 20} ${baseY - 30} Z`}
+        fill={c.flag}
+      />
+      <Path
+        d={`M${cx - 12} ${baseY - 32} L${cx} ${baseY - 38} L${cx + 12} ${baseY - 32}`}
+        stroke="#FFFFFF"
+        strokeWidth={1.5}
+        fill="none"
+        opacity={0.6}
+      />
+      {/* Goods */}
+      <Circle cx={cx - 7} cy={baseY - 19} r={3} fill={c.flower2} />
+      <Circle cx={cx + 1} cy={baseY - 20} r={2.5} fill={c.flower3} />
+      <Circle cx={cx + 8} cy={baseY - 19} r={3} fill={c.grassLight} />
+      {destroyed && (
+        <Path
+          d={`M${cx - 15} ${baseY - 30} L${cx - 10} ${baseY - 16}`}
+          stroke={c.groundDark}
+          strokeWidth={1.2}
+          fill="none"
+        />
       )}
-    </Svg>
+    </G>
   );
 }
 
-// Level 5: Thriving kingdom / Ruined castle
-function Level5({ state, width, height }: { state: VillageState; width: number; height: number }) {
-  const c = COLORS[state];
+// ── Watchtower (Level 4 — far left) ────────────────────────────
+
+function WatchtowerBuilding({ cx, baseY, c, destroyed }: BuildingProps) {
   return (
-    <Svg width={width} height={height} viewBox="0 0 300 200">
-      <Rect x="0" y="0" width="300" height="200" fill={c.sky} />
-      <Circle cx="260" cy="30" r="28" fill={c.sun} />
-      <Path d="M0 110 Q150 100 300 110 L300 200 L0 200 Z" fill={c.ground} />
-      
-      {state === 'flourishing' ? (
-        <G>
-          {/* Castle main building */}
-          <Rect x="90" y="45" width="120" height="95" fill={c.building} />
-          
-          {/* Castle towers */}
-          <Rect x="70" y="25" width="35" height="115" fill={c.building} />
-          <Path d="M70 25 L87 5 L105 25 Z" fill={c.roof} />
-          <Rect x="75" y="35" width="10" height="15" fill={c.window} />
-          <Rect x="75" y="60" width="10" height="15" fill={c.window} />
-          
-          <Rect x="195" y="25" width="35" height="115" fill={c.building} />
-          <Path d="M195 25 L212 5 L230 25 Z" fill={c.roof} />
-          <Rect x="205" y="35" width="10" height="15" fill={c.window} />
-          <Rect x="205" y="60" width="10" height="15" fill={c.window} />
-          
-          {/* Center tower */}
-          <Rect x="130" y="20" width="40" height="70" fill={c.building} />
-          <Path d="M125 20 L150 -5 L175 20 Z" fill={c.roof} />
-          <Circle cx="150" cy="35" r="12" fill={c.window} />
-          
-          {/* Main entrance */}
-          <Path d="M135 140 L135 100 Q150 85 165 100 L165 140 Z" fill={c.door} />
-          
-          {/* Flag */}
-          <Rect x="148" y="-5" width="3" height="25" fill={c.trunk} />
-          <Path d="M151 -5 L165 2 L151 10 Z" fill={c.flower} />
-          
-          {/* Garden and paths */}
-          <Ellipse cx="50" cy="160" rx="25" ry="15" fill={c.grass} />
-          <Circle cx="45" cy="155" r="8" fill={c.tree} />
-          <Circle cx="55" cy="158" r="6" fill={c.tree} />
-          
-          <Ellipse cx="250" cy="160" rx="25" ry="15" fill={c.grass} />
-          <Circle cx="245" cy="155" r="8" fill={c.tree} />
-          <Circle cx="255" cy="158" r="6" fill={c.tree} />
-          
-          {/* Path to castle */}
-          <Path d="M150 140 L150 180" stroke={c.stone} strokeWidth="20" />
-          <Path d="M140 145 L140 175 M160 145 L160 175" stroke={c.ground} strokeWidth="2" />
-          
-          {/* Banners */}
-          <Rect x="110" y="75" width="2" height="20" fill={c.trunk} />
-          <Path d="M112 75 L122 80 L112 85 Z" fill={c.flower} />
-          <Rect x="188" y="75" width="2" height="20" fill={c.trunk} />
-          <Path d="M190 75 L180 80 L190 85 Z" fill={c.flower} />
-        </G>
-      ) : (
-        <G>
-          {/* Ruined castle */}
-          <Rect x="90" y="55" width="120" height="85" fill={c.building} />
-          <Path d="M100 55 L120 55 L120 45 L140 45 L140 55 L160 55 L160 45 L180 45 L180 55 L200 55" 
-                stroke={c.building} strokeWidth="10" fill="none" />
-          
-          {/* Crumbling towers */}
-          <Rect x="70" y="40" width="35" height="100" fill={c.building} />
-          <Path d="M70 40 L75 30 L80 40 M90 40 L95 25 L100 40" fill={c.building} />
-          <Path d="M75 50 L100 90" stroke={c.sky} strokeWidth="4" />
-          
-          <Rect x="195" y="50" width="35" height="90" fill={c.building} />
-          <Path d="M200 50 L205 40 L210 50 M215 50 L220 35 L225 50" fill={c.building} />
-          
-          {/* Destroyed center section */}
-          <Rect x="130" y="35" width="40" height="55" fill={c.building} />
-          <Path d="M130 35 L150 35 L140 20 M160 35 L170 35 L165 25" stroke={c.building} strokeWidth="8" />
-          
-          {/* Broken entrance */}
-          <Path d="M135 140 L135 110 Q150 100 165 110 L165 140" stroke={c.door} strokeWidth="3" fill="none" />
-          <Path d="M140 120 L160 140" stroke={c.stone} strokeWidth="3" />
-          
-          {/* Rubble */}
-          <Ellipse cx="150" cy="155" rx="35" ry="10" fill={c.stone} />
-          <Ellipse cx="60" cy="165" rx="20" ry="8" fill={c.stone} />
-          <Ellipse cx="240" cy="165" rx="20" ry="8" fill={c.stone} />
-          
-          {/* Overgrown weeds */}
-          <Path d="M50 165 C50 155 55 155 55 165 C55 155 60 155 60 165" stroke={c.grass} strokeWidth="2" fill="none" />
-          <Path d="M235 163 C235 153 240 153 240 163" stroke={c.grass} strokeWidth="2" fill="none" />
-          <Path d="M245 165 C245 155 250 155 250 165" stroke={c.grass} strokeWidth="2" fill="none" />
-          
-          {/* Broken flag pole */}
-          <Path d="M148 20 L152 35" stroke={c.trunk} strokeWidth="3" />
-        </G>
+    <G>
+      <Rect x={cx - 9} y={baseY - 50} width={18} height={50} fill={c.building} />
+      <Path
+        d={`M${cx - 12} ${baseY - 50} L${cx} ${baseY - 66} L${cx + 12} ${baseY - 50} Z`}
+        fill={c.roof}
+      />
+      {/* Windows */}
+      <Rect x={cx - 3} y={baseY - 42} width={6} height={7} rx={3} fill={c.window} />
+      <Rect x={cx - 3} y={baseY - 28} width={6} height={7} rx={3} fill={c.window} />
+      <Rect x={cx - 4} y={baseY - 12} width={8} height={12} rx={4} fill={c.door} />
+      {/* Flag */}
+      <Rect x={cx - 0.5} y={baseY - 66} width={1.5} height={10} fill={c.trunk} />
+      <Path
+        d={`M${cx + 1} ${baseY - 66} L${cx + 8} ${baseY - 62} L${cx + 1} ${baseY - 58} Z`}
+        fill={c.flag}
+      />
+      {destroyed && (
+        <Path
+          d={`M${cx - 5} ${baseY - 48} L${cx + 5} ${baseY - 15}`}
+          stroke={c.groundDark}
+          strokeWidth={2}
+          fill="none"
+        />
       )}
-    </Svg>
+    </G>
   );
 }
 
-export default function VillageIllustration({ level, state, width = 300, height = 200 }: VillageIllustrationProps) {
-  const clampedLevel = Math.max(1, Math.min(5, level)) as 1 | 2 | 3 | 4 | 5;
-  
-  const levelComponents = {
-    1: Level1,
-    2: Level2,
-    3: Level3,
-    4: Level4,
-    5: Level5,
-  };
-  
-  const LevelComponent = levelComponents[clampedLevel];
+// ── Castle (Level 5 — far right) ───────────────────────────────
+
+function CastleBuilding({ cx, baseY, c, destroyed }: BuildingProps) {
+  return (
+    <G>
+      {/* Main body */}
+      <Rect x={cx - 15} y={baseY - 35} width={30} height={35} fill={c.building} />
+      {/* Left turret */}
+      <Rect x={cx - 20} y={baseY - 48} width={10} height={48} fill={c.building} />
+      <Path
+        d={`M${cx - 20} ${baseY - 48} L${cx - 15} ${baseY - 56} L${cx - 10} ${baseY - 48} Z`}
+        fill={c.roof}
+      />
+      {/* Right turret */}
+      <Rect x={cx + 10} y={baseY - 48} width={10} height={48} fill={c.building} />
+      <Path
+        d={`M${cx + 10} ${baseY - 48} L${cx + 15} ${baseY - 56} L${cx + 20} ${baseY - 48} Z`}
+        fill={c.roof}
+      />
+      {/* Arched entrance */}
+      <Path
+        d={`M${cx - 5} ${baseY} L${cx - 5} ${baseY - 14} Q${cx} ${baseY - 20} ${cx + 5} ${baseY - 14} L${cx + 5} ${baseY} Z`}
+        fill={c.door}
+      />
+      {/* Turret windows */}
+      <Rect x={cx - 18} y={baseY - 40} width={5} height={6} rx={2.5} fill={c.window} />
+      <Rect x={cx + 13} y={baseY - 40} width={5} height={6} rx={2.5} fill={c.window} />
+      {/* Centre window */}
+      <Circle cx={cx} cy={baseY - 25} r={4} fill={c.window} />
+      {/* Battlements */}
+      <Rect x={cx - 13} y={baseY - 38} width={4} height={3} fill={c.buildingLight} />
+      <Rect x={cx - 5} y={baseY - 38} width={4} height={3} fill={c.buildingLight} />
+      <Rect x={cx + 3} y={baseY - 38} width={4} height={3} fill={c.buildingLight} />
+      <Rect x={cx + 11} y={baseY - 38} width={4} height={3} fill={c.buildingLight} />
+      {destroyed && (
+        <G>
+          <Path
+            d={`M${cx - 12} ${baseY - 35} L${cx - 5} ${baseY - 10}`}
+            stroke={c.groundDark}
+            strokeWidth={2}
+            fill="none"
+          />
+          <Path
+            d={`M${cx + 10} ${baseY - 48} L${cx + 14} ${baseY - 40}`}
+            stroke={c.groundDark}
+            strokeWidth={1.5}
+            fill="none"
+          />
+        </G>
+      )}
+    </G>
+  );
+}
+
+// ── Building configuration ──────────────────────────────────────
+
+interface BuildingConfig {
+  id: string;
+  cx: number;
+  unlockLevel: number;
+  Component: React.FC<BuildingProps>;
+}
+
+const BUILDING_CONFIG: BuildingConfig[] = [
+  { id: 'watchtower', cx: 38, unlockLevel: 4, Component: WatchtowerBuilding },
+  { id: 'cottage', cx: 100, unlockLevel: 2, Component: CottageBuilding },
+  { id: 'hut', cx: 155, unlockLevel: 1, Component: HutBuilding },
+  { id: 'market', cx: 212, unlockLevel: 3, Component: MarketBuilding },
+  { id: 'castle', cx: 268, unlockLevel: 5, Component: CastleBuilding },
+];
+
+// ── Main Component ──────────────────────────────────────────────
+
+export default function VillageIllustration({
+  level,
+  state,
+  width = 300,
+  height = 200,
+}: VillageIllustrationProps) {
+  const clampedLevel = Math.max(1, Math.min(5, level));
+  const c = COLORS[state];
+  const destroyed = state === 'destroyed';
+  const baseY = 142;
 
   return (
-    <View style={{ width, height }}>
-      <LevelComponent state={state} width={width} height={height} />
+    <View style={{ width, height, borderRadius: 16, overflow: 'hidden' }}>
+      <Svg width={width} height={height} viewBox="0 0 300 200">
+        <Defs>
+          <LinearGradient id="skyGrad" x1="0" y1="0" x2="0" y2="1">
+            <Stop offset="0" stopColor={c.skyTop} />
+            <Stop offset="1" stopColor={c.skyBottom} />
+          </LinearGradient>
+        </Defs>
+
+        {/* Sky */}
+        <Rect x="0" y="0" width="300" height="200" fill="url(#skyGrad)" />
+
+        {/* Sun */}
+        <Circle cx="260" cy="32" r="20" fill={c.sun} opacity={0.9} />
+        <Circle cx="260" cy="32" r="28" fill={c.sunGlow} />
+
+        {/* Clouds */}
+        <G opacity={0.65}>
+          <Ellipse cx="55" cy="28" rx="22" ry="9" fill={c.cloud} />
+          <Ellipse cx="73" cy="26" rx="16" ry="7" fill={c.cloud} />
+          <Ellipse cx="175" cy="42" rx="18" ry="7" fill={c.cloud} />
+          <Ellipse cx="189" cy="40" rx="13" ry="6" fill={c.cloud} />
+        </G>
+
+        {/* Background hills */}
+        <Path
+          d="M-10 148 Q50 120 110 132 Q170 115 230 128 Q275 118 310 135 L310 200 L-10 200 Z"
+          fill={c.ground}
+        />
+
+        {/* Main ground */}
+        <Path
+          d="M-10 142 Q60 134 120 138 Q160 132 210 136 Q260 133 310 140 L310 200 L-10 200 Z"
+          fill={c.grass}
+        />
+
+        {/* Winding path */}
+        <Path
+          d="M85 200 Q105 178 125 168 Q155 155 185 164 Q215 173 235 200"
+          stroke={c.pathEdge}
+          strokeWidth={15}
+          fill="none"
+          strokeLinecap="round"
+          opacity={0.4}
+        />
+        <Path
+          d="M85 200 Q105 178 125 168 Q155 155 185 164 Q215 173 235 200"
+          stroke={c.path}
+          strokeWidth={12}
+          fill="none"
+          strokeLinecap="round"
+        />
+
+        {/* Buildings or empty plots */}
+        {BUILDING_CONFIG.map(({ id, cx, unlockLevel, Component }) =>
+          clampedLevel >= unlockLevel ? (
+            <Component key={id} cx={cx} baseY={baseY} c={c} destroyed={destroyed} />
+          ) : (
+            <EmptyPlot key={id} cx={cx} baseY={baseY} c={c} />
+          ),
+        )}
+
+        {/* Decorative trees & flowers (flourishing only) */}
+        {!destroyed ? (
+          <G>
+            {/* Tree between cottage and hut */}
+            <Rect x="128" y="118" width={3} height={12} fill={c.trunk} />
+            <Circle cx={129.5} cy={113} r={8} fill={c.tree} />
+
+            {clampedLevel >= 2 && (
+              <G>
+                {/* Tree between watchtower and cottage */}
+                <Rect x="66" y="120" width={3} height={10} fill={c.trunk} />
+                <Circle cx={67.5} cy={115} r={7} fill={c.treeDark} />
+              </G>
+            )}
+
+            {clampedLevel >= 3 && (
+              <G>
+                {/* Tree between market and castle */}
+                <Rect x="240" y="118" width={3} height={12} fill={c.trunk} />
+                <Circle cx={241.5} cy={113} r={8} fill={c.tree} />
+              </G>
+            )}
+
+            {/* Flowers */}
+            <Circle cx={88} cy={156} r={2.5} fill={c.flower1} />
+            <Circle cx={97} cy={159} r={2} fill={c.flower2} />
+            <Circle cx={192} cy={157} r={2.5} fill={c.flower3} />
+            <Circle cx={168} cy={162} r={2} fill={c.flower1} />
+
+            {clampedLevel >= 3 && (
+              <G>
+                <Circle cx={48} cy={158} r={2} fill={c.flower2} />
+                <Circle cx={252} cy={156} r={2.5} fill={c.flower1} />
+              </G>
+            )}
+          </G>
+        ) : (
+          <G>
+            {/* Dead tree stump */}
+            <Path d="M128 142 L130 120 L127 120 L130 110 L133 120 L131 120 L133 142" fill={c.trunk} />
+
+            {clampedLevel >= 2 && (
+              <Path d="M66 142 L68 126 L65 126 L68 118 L71 126 L69 126 L71 142" fill={c.trunk} />
+            )}
+
+            {/* Cracks in ground */}
+            <Path d="M50 168 L62 164 L75 170" stroke={c.groundDark} strokeWidth={1.2} fill="none" />
+            <Path d="M200 166 L212 170 L222 164" stroke={c.groundDark} strokeWidth={1.2} fill="none" />
+          </G>
+        )}
+
+        {/* Foreground grass tufts */}
+        <G opacity={0.5}>
+          <Path
+            d="M12 182 C12 175 15 175 15 182"
+            stroke={destroyed ? c.grass : c.grassLight}
+            strokeWidth={1.2}
+            fill="none"
+          />
+          <Path
+            d="M17 184 C17 177 20 177 20 184"
+            stroke={destroyed ? c.grass : c.grassLight}
+            strokeWidth={1.2}
+            fill="none"
+          />
+          <Path
+            d="M282 180 C282 173 285 173 285 180"
+            stroke={destroyed ? c.grass : c.grassLight}
+            strokeWidth={1.2}
+            fill="none"
+          />
+          <Path
+            d="M287 182 C287 175 290 175 290 182"
+            stroke={destroyed ? c.grass : c.grassLight}
+            strokeWidth={1.2}
+            fill="none"
+          />
+        </G>
+      </Svg>
     </View>
   );
 }

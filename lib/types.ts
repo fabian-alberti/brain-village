@@ -12,6 +12,8 @@ export interface User {
   id: string;
   email: string;
   displayName: string;
+  profileImage: number; // 1-5, maps to Brain_Profile_X.png
+  profileBgColor: string; // hex color for avatar background circle
   totalXp: number;
   currentLevel: number;
   villageState: VillageState;
@@ -22,6 +24,18 @@ export interface User {
   createdAt: Timestamp;
 }
 
+// Available background colors for profile avatar
+export const PROFILE_BG_COLORS = [
+  '#E8F5E9', // soft green
+  '#E3F2FD', // soft blue
+  '#FFF3E0', // soft orange
+  '#F3E5F5', // soft purple
+  '#FFF9C4', // soft yellow
+  '#FFEBEE', // soft red/pink
+  '#E0F7FA', // soft cyan
+  '#F1F8E9', // soft lime
+];
+
 export interface Goal {
   id: string;
   name: string;
@@ -31,7 +45,9 @@ export interface Goal {
   targetCategories: string[]; // selected category IDs
   limit: number; // minutes or open count
   currentProgress: number; // logged today
+  appProgress?: Record<string, number>; // per-app logged progress (appName → minutes or opens)
   xpReward: number;
+  isActive: boolean; // only one goal can be active at a time
   isCompleted: boolean;
   consecutiveMisses: number;
   createdAt: Timestamp;

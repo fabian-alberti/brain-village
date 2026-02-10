@@ -12,24 +12,63 @@ import {
   Platform,
   Alert,
   Linking,
+  Image,
+  ImageSourcePropType,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { useApp, useUser } from '@/context/AppContext';
+import { PROFILE_BG_COLORS } from '@/lib/types';
+
+// Map profile image index (1-5) to require() assets
+const PROFILE_IMAGES: Record<number, ImageSourcePropType> = {
+  1: require('@/assets/profile images/Brain_Profile_1.png'),
+  2: require('@/assets/profile images/Brain_Profile_2.png'),
+  3: require('@/assets/profile images/Brain_Profile_3.png'),
+  4: require('@/assets/profile images/Brain_Profile_4.png'),
+  5: require('@/assets/profile images/Brain_Profile_5.png'),
+};
 
 export default function ProfileScreen() {
-  const { updateSettings, signOut } = useApp();
+  const { updateSettings, updateProfile, signOut } = useApp();
   const user = useUser();
   const router = useRouter();
 
   const [showEditNameModal, setShowEditNameModal] = useState(false);
   const [showNotificationsModal, setShowNotificationsModal] = useState(false);
+  const [showProfileImageModal, setShowProfileImageModal] = useState(false);
   const [editedName, setEditedName] = useState('');
   const [isSaving, setIsSaving] = useState(false);
+  const [selectedImage, setSelectedImage] = useState(1);
+  const [selectedBgColor, setSelectedBgColor] = useState('#E8F5E9');
 
   const displayName = user?.displayName ?? 'User';
   const notificationsEnabled = user?.settings?.notificationsEnabled ?? true;
+  const profileImage = user?.profileImage ?? 1;
+  const profileBgColor = user?.profileBgColor ?? '#E8F5E9';
+
+  const handleEditProfileImage = () => {
+    setSelectedImage(profileImage);
+    setSelectedBgColor(profileBgColor);
+    setShowProfileImageModal(true);
+  };
+
+  const handleSaveProfileImage = async () => {
+    if (isSaving) return;
+    setIsSaving(true);
+    try {
+      await updateProfile({
+        profileImage: selectedImage,
+        profileBgColor: selectedBgColor,
+      });
+      setShowProfileImageModal(false);
+    } catch (error) {
+      console.error('Failed to update profile image:', error);
+    } finally {
+      setIsSaving(false);
+    }
+  };
 
   const handleEditName = () => {
     setEditedName(displayName);
@@ -40,10 +79,7 @@ export default function ProfileScreen() {
     if (!editedName.trim() || isSaving) return;
     setIsSaving(true);
     try {
-      const { updateUserData } = await import('@/lib/firebase');
-      if (user?.id) {
-        await updateUserData(user.id, { displayName: editedName.trim() });
-      }
+      await updateProfile({ displayName: editedName.trim() });
       setShowEditNameModal(false);
     } catch (error) {
       console.error('Failed to update name:', error);
@@ -208,16 +244,39 @@ export default function ProfileScreen() {
 
         {/* Avatar & Name */}
         <View style={{ alignItems: 'center', marginTop: 20, marginBottom: 28 }}>
-          <View style={{
-            width: 88,
-            height: 88,
-            borderRadius: 44,
-            backgroundColor: '#E8F5E9',
-            alignItems: 'center',
-            justifyContent: 'center',
-          }}>
-            <MaterialCommunityIcons name="account" size={48} color="#2D5A3D" />
-          </View>
+          <TouchableOpacity onPress={handleEditProfileImage} activeOpacity={0.8}>
+            <View style={{
+              width: 96,
+              height: 96,
+              borderRadius: 48,
+              backgroundColor: profileBgColor,
+              alignItems: 'center',
+              justifyContent: 'center',
+              overflow: 'hidden',
+            }}>
+              <Image
+                source={PROFILE_IMAGES[profileImage] || PROFILE_IMAGES[1]}
+                style={{ width: 72, height: 72 }}
+                resizeMode="contain"
+              />
+            </View>
+            {/* Edit badge */}
+            <View style={{
+              position: 'absolute',
+              bottom: 0,
+              right: 0,
+              width: 30,
+              height: 30,
+              borderRadius: 15,
+              backgroundColor: '#2D5A3D',
+              alignItems: 'center',
+              justifyContent: 'center',
+              borderWidth: 2,
+              borderColor: '#FFFBF2',
+            }}>
+              <MaterialCommunityIcons name="pencil" size={14} color="#FFFFFF" />
+            </View>
+          </TouchableOpacity>
           <TouchableOpacity
             onPress={handleEditName}
             style={{ flexDirection: 'row', alignItems: 'center', marginTop: 14 }}
@@ -316,11 +375,13 @@ export default function ProfileScreen() {
             <SettingsRow
               icon="help-circle-outline"
               label="FAQs"
+              onPress={() => router.push('/faq')}
             />
             <SettingsRow
               icon="information-outline"
               label="About Brain Village"
               showDivider={false}
+              onPress={() => router.push('/about')}
             />
           </View>
         </View>
@@ -470,6 +531,163 @@ export default function ProfileScreen() {
                   thumbColor="#FFFFFF"
                   ios_backgroundColor="#D1D1D1"
                 />
+              </View>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* ── Profile Image Modal ─────────────────────────── */}
+      <Modal
+        visible={showProfileImageModal}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowProfileImageModal(false)}
+      >
+        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.3)' }}>
+          <TouchableWithoutFeedback onPress={() => setShowProfileImageModal(false)}>
+            <View style={{ flex: 1 }} />
+          </TouchableWithoutFeedback>
+
+          <View style={{
+            backgroundColor: '#FFFFFF',
+            borderTopLeftRadius: 24,
+            borderTopRightRadius: 24,
+            paddingBottom: 40,
+            shadowColor: '#000',
+            shadowOffset: { width: 0, height: -4 },
+            shadowOpacity: 0.1,
+            shadowRadius: 16,
+            elevation: 10,
+          }}>
+            {/* Handle bar */}
+            <View style={{ alignItems: 'center', paddingVertical: 12 }}>
+              <View style={{ width: 40, height: 4, borderRadius: 2, backgroundColor: '#E8E8E8' }} />
+            </View>
+
+            <View style={{ paddingHorizontal: 20, paddingBottom: 8 }}>
+              <Text style={{ fontSize: 18, fontWeight: '700', color: '#1A1A1A', marginBottom: 8, textAlign: 'center' }}>
+                Choose Your Avatar
+              </Text>
+
+              {/* Preview */}
+              <View style={{ alignItems: 'center', marginBottom: 20 }}>
+                <View style={{
+                  width: 100,
+                  height: 100,
+                  borderRadius: 50,
+                  backgroundColor: selectedBgColor,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  overflow: 'hidden',
+                }}>
+                  <Image
+                    source={PROFILE_IMAGES[selectedImage] || PROFILE_IMAGES[1]}
+                    style={{ width: 76, height: 76 }}
+                    resizeMode="contain"
+                  />
+                </View>
+              </View>
+
+              {/* Brain Icon Selection */}
+              <Text style={{ fontSize: 13, fontWeight: '600', color: '#8B9D77', marginBottom: 10 }}>
+                Brain Character
+              </Text>
+              <View style={{
+                flexDirection: 'row',
+                justifyContent: 'space-between',
+                marginBottom: 20,
+              }}>
+                {[1, 2, 3, 4, 5].map((idx) => (
+                  <TouchableOpacity
+                    key={idx}
+                    onPress={() => setSelectedImage(idx)}
+                    activeOpacity={0.7}
+                    style={{
+                      width: 58,
+                      height: 58,
+                      borderRadius: 16,
+                      backgroundColor: '#F5F5F0',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      borderWidth: selectedImage === idx ? 2.5 : 0,
+                      borderColor: selectedImage === idx ? '#2D5A3D' : 'transparent',
+                      overflow: 'hidden',
+                    }}
+                  >
+                    <Image
+                      source={PROFILE_IMAGES[idx]}
+                      style={{ width: 44, height: 44 }}
+                      resizeMode="contain"
+                    />
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              {/* Background Color Selection */}
+              <Text style={{ fontSize: 13, fontWeight: '600', color: '#8B9D77', marginBottom: 10 }}>
+                Background Color
+              </Text>
+              <View style={{
+                flexDirection: 'row',
+                flexWrap: 'wrap',
+                gap: 12,
+                marginBottom: 24,
+              }}>
+                {PROFILE_BG_COLORS.map((color) => (
+                  <TouchableOpacity
+                    key={color}
+                    onPress={() => setSelectedBgColor(color)}
+                    activeOpacity={0.7}
+                    style={{
+                      width: 40,
+                      height: 40,
+                      borderRadius: 20,
+                      backgroundColor: color,
+                      borderWidth: selectedBgColor === color ? 2.5 : 1,
+                      borderColor: selectedBgColor === color ? '#2D5A3D' : '#E0E0E0',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
+                  >
+                    {selectedBgColor === color && (
+                      <MaterialCommunityIcons name="check" size={18} color="#2D5A3D" />
+                    )}
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              {/* Action Buttons */}
+              <View style={{ flexDirection: 'row', gap: 12 }}>
+                <TouchableOpacity
+                  onPress={() => setShowProfileImageModal(false)}
+                  style={{
+                    flex: 1,
+                    paddingVertical: 14,
+                    borderRadius: 12,
+                    backgroundColor: '#F5F5F0',
+                  }}
+                >
+                  <Text style={{ textAlign: 'center', fontSize: 16, fontWeight: '600', color: '#8B9D77' }}>
+                    Cancel
+                  </Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  onPress={handleSaveProfileImage}
+                  disabled={isSaving}
+                  style={{
+                    flex: 1,
+                    paddingVertical: 14,
+                    borderRadius: 12,
+                    backgroundColor: '#2D5A3D',
+                    opacity: isSaving ? 0.5 : 1,
+                  }}
+                >
+                  <Text style={{ textAlign: 'center', fontSize: 16, fontWeight: '600', color: '#FFFFFF' }}>
+                    {isSaving ? 'Saving...' : 'Save'}
+                  </Text>
+                </TouchableOpacity>
               </View>
             </View>
           </View>

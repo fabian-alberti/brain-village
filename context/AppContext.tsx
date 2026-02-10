@@ -2,7 +2,7 @@ import React, { createContext, useContext, useEffect, useReducer, ReactNode } fr
 import { User as FirebaseUser } from 'firebase/auth';
 import { Timestamp } from 'firebase/firestore';
 import { User, Goal, NewGoal } from '@/lib/types';
-import { calculateXpReward } from '@/lib/xp';
+import { calculateXpReward, calculateFinalXp } from '@/lib/xp';
 import { 
   onAuthChange, 
   subscribeToUser, 
@@ -15,6 +15,8 @@ import {
   createGoal as firebaseCreateGoal,
   updateGoal as firebaseUpdateGoal,
   deleteGoal as firebaseDeleteGoal,
+  logProgress as firebaseLogProgress,
+  completeGoal as firebaseCompleteGoal,
 } from '@/lib/firebase';
 
 // ──────────────────────────────────────────────
@@ -26,6 +28,8 @@ const MOCK_USER: User = {
   id: 'test-user-001',
   email: 'test@brainvillage.dev',
   displayName: 'Test User',
+  profileImage: 1,
+  profileBgColor: '#E8F5E9',
   totalXp: 150,
   currentLevel: 2,
   villageState: 'flourishing',
@@ -158,9 +162,13 @@ interface AppContextType extends AppState {
   signUp: (email: string, password: string, displayName: string) => Promise<void>;
   signOut: () => Promise<void>;
   updateSettings: (settings: Partial<User['settings']>) => Promise<void>;
+  updateProfile: (data: Partial<Pick<User, 'displayName' | 'profileImage' | 'profileBgColor'>>) => Promise<void>;
   addGoal: (goalData: NewGoal) => Promise<string>;
   removeGoal: (goalId: string) => Promise<void>;
   updateGoalData: (goalId: string, data: Partial<Goal>) => Promise<void>;
+  toggleGoalActive: (goalId: string) => Promise<void>;
+  logGoalProgress: (goalId: string, amount: number, appName?: string) => Promise<void>;
+  markGoalComplete: (goalId: string) => Promise<void>;
 }
 
 // Create context
@@ -274,6 +282,22 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  const updateProfile = async (data: Partial<Pick<User, 'displayName' | 'profileImage' | 'profileBgColor'>>) => {
+    if (!state.user) return;
+
+    // Update local state immediately
+    dispatch({ type: 'SET_USER', payload: { ...state.user, ...data } });
+
+    // Persist to Firebase when not in test mode
+    if (!TEST_MODE && state.firebaseUser) {
+      try {
+        await updateUserData(state.firebaseUser.uid, data);
+      } catch (error) {
+        console.error('Failed to update profile:', error);
+      }
+    }
+  };
+
   // ── Goal CRUD ──
   // In TEST_MODE these operate on local state only.
   // In production they call Firebase (and the subscription updates local state).
@@ -281,13 +305,25 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const addGoal = async (goalData: NewGoal): Promise<string> => {
     if (TEST_MODE) {
       const id = generateTestId();
-      const xpReward = calculateXpReward(goalData.type, goalData.limit);
+      const xpReward = calculateXpReward(
+        goalData.type,
+        goalData.limit,
+        goalData.targetApps,
+        goalData.targetCategories || [],
+      );
+      // Deactivate all existing goals – new goal becomes the active one
+      state.goals.forEach(g => {
+        if (g.isActive) {
+          dispatch({ type: 'UPDATE_GOAL', payload: { id: g.id, data: { isActive: false } } });
+        }
+      });
       const newGoal: Goal = {
         id,
         ...goalData,
         targetCategories: goalData.targetCategories || [],
         currentProgress: 0,
         xpReward,
+        isActive: true,
         isCompleted: false,
         consecutiveMisses: 0,
         createdAt: Timestamp.now(),
@@ -321,15 +357,119 @@ export function AppProvider({ children }: { children: ReactNode }) {
     await firebaseUpdateGoal(state.firebaseUser.uid, goalId, data);
   };
 
+  // ── Toggle goal active (only one at a time) ──
+
+  const toggleGoalActive = async (goalId: string): Promise<void> => {
+    const goal = state.goals.find(g => g.id === goalId);
+    if (!goal) return;
+
+    const isCurrentlyActive = goal.isActive;
+
+    if (TEST_MODE) {
+      // If activating, deactivate all others first
+      if (!isCurrentlyActive) {
+        state.goals.forEach(g => {
+          if (g.id !== goalId && g.isActive) {
+            dispatch({ type: 'UPDATE_GOAL', payload: { id: g.id, data: { isActive: false } } });
+          }
+        });
+      }
+      dispatch({ type: 'UPDATE_GOAL', payload: { id: goalId, data: { isActive: !isCurrentlyActive } } });
+      return;
+    }
+
+    if (!state.firebaseUser) throw new Error('User not authenticated');
+    // Deactivate all others when activating
+    if (!isCurrentlyActive) {
+      for (const g of state.goals) {
+        if (g.id !== goalId && g.isActive) {
+          await firebaseUpdateGoal(state.firebaseUser.uid, g.id, { isActive: false });
+        }
+      }
+    }
+    await firebaseUpdateGoal(state.firebaseUser.uid, goalId, { isActive: !isCurrentlyActive });
+  };
+
+  // ── Progress logging ──
+  // In TEST_MODE updates local state; in production calls Firebase.
+
+  const logGoalProgress = async (goalId: string, amount: number, appName?: string): Promise<void> => {
+    if (TEST_MODE) {
+      const goal = state.goals.find(g => g.id === goalId);
+      if (!goal) return;
+
+      // Overwrite per-app progress (the logged value is the total for today, not a delta)
+      const updatedAppProgress = { ...(goal.appProgress || {}) };
+      if (appName) {
+        updatedAppProgress[appName] = amount;
+      }
+
+      // Recalculate total from all per-app values
+      const newTotal = Object.values(updatedAppProgress).reduce((sum, v) => sum + v, 0);
+
+      dispatch({
+        type: 'UPDATE_GOAL',
+        payload: {
+          id: goalId,
+          data: {
+            currentProgress: newTotal,
+            appProgress: updatedAppProgress,
+          },
+        },
+      });
+      return;
+    }
+
+    if (!state.firebaseUser) throw new Error('User not authenticated');
+    await firebaseLogProgress(state.firebaseUser.uid, goalId, amount, appName);
+  };
+
+  const markGoalComplete = async (goalId: string): Promise<void> => {
+    if (TEST_MODE) {
+      const goal = state.goals.find(g => g.id === goalId);
+      if (!goal) return;
+      dispatch({
+        type: 'UPDATE_GOAL',
+        payload: {
+          id: goalId,
+          data: { isCompleted: true, consecutiveMisses: 0 },
+        },
+      });
+      // Award XP locally with streak multiplier + completion bonus
+      if (state.user) {
+        const newStreak = (state.user.currentStreak || 0) + 1;
+        const earnedXp = calculateFinalXp(goal.xpReward, newStreak);
+        const newTotalXp = state.user.totalXp + earnedXp;
+        dispatch({
+          type: 'SET_USER',
+          payload: {
+            ...state.user,
+            totalXp: newTotalXp,
+            goalsCompleted: state.user.goalsCompleted + 1,
+            currentStreak: newStreak,
+          },
+        });
+      }
+      return;
+    }
+
+    if (!state.firebaseUser) throw new Error('User not authenticated');
+    await firebaseCompleteGoal(state.firebaseUser.uid, goalId);
+  };
+
   const value: AppContextType = {
     ...state,
     signIn,
     signUp,
     signOut,
     updateSettings,
+    updateProfile,
     addGoal,
     removeGoal,
     updateGoalData,
+    toggleGoalActive,
+    logGoalProgress,
+    markGoalComplete,
   };
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;

@@ -76,9 +76,10 @@ function getTypeLabel(type: Goal['type']) {
 interface GoalCardProps {
   goal: Goal;
   onDelete: () => void;
+  onToggleActive: () => void;
 }
 
-export default function GoalCard({ goal, onDelete }: GoalCardProps) {
+export default function GoalCard({ goal, onDelete, onToggleActive }: GoalCardProps) {
   const router = useRouter();
   const swipeableRef = useRef<Swipeable>(null);
 
@@ -124,8 +125,8 @@ export default function GoalCard({ goal, onDelete }: GoalCardProps) {
         justifyContent: 'center',
         alignItems: 'center',
         width: 80,
-        borderTopRightRadius: 16,
-        borderBottomRightRadius: 16,
+        borderRadius: 16,
+        marginLeft: 8,
         marginBottom: 12,
       }}
     >
@@ -152,6 +153,9 @@ export default function GoalCard({ goal, onDelete }: GoalCardProps) {
           borderRadius: 16,
           padding: 16,
           marginBottom: 12,
+          opacity: goal.isActive ? 1 : 0.55,
+          borderWidth: goal.isActive ? 2 : 0,
+          borderColor: goal.isActive ? '#2D5A3D' : 'transparent',
           // Subtle shadow for depth
           shadowColor: '#000',
           shadowOffset: { width: 0, height: 2 },
@@ -175,25 +179,71 @@ export default function GoalCard({ goal, onDelete }: GoalCardProps) {
           </View>
 
           <View style={{ flex: 1 }}>
-            <Text style={{ fontSize: 16, fontWeight: '700', color: '#1A1A1A', letterSpacing: -0.2 }} numberOfLines={1}>
-              {goal.name}
-            </Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              <Text style={{ fontSize: 16, fontWeight: '700', color: '#1A1A1A', letterSpacing: -0.2, flex: 1 }} numberOfLines={1}>
+                {goal.name}
+              </Text>
+            </View>
             <Text style={{ fontSize: 13, color: '#8B9D77', marginTop: 1 }}>
               {getTypeLabel(goal.type)}
             </Text>
           </View>
 
-          {/* Percentage badge */}
-          <View style={{
-            backgroundColor: usagePercent > 80 ? '#FEF2F2' : usagePercent > 50 ? '#FFF8F0' : '#F0F7F0',
-            paddingHorizontal: 10,
-            paddingVertical: 4,
-            borderRadius: 10,
-          }}>
-            <Text style={{ fontSize: 13, fontWeight: '700', color: progressColor }}>
-              {usagePercent}%
-            </Text>
-          </View>
+          {/* Active toggle switch with label */}
+          <TouchableOpacity
+            onPress={(e) => {
+              e.stopPropagation();
+              onToggleActive();
+            }}
+            activeOpacity={0.7}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            style={{
+              width: 80,
+              height: 28,
+              borderRadius: 14,
+              backgroundColor: goal.isActive ? '#2D5A3D' : '#D1D5DB',
+              flexDirection: 'row',
+              alignItems: 'center',
+              paddingHorizontal: 3,
+              marginLeft: 8,
+            }}
+          >
+            {goal.isActive ? (
+              <>
+                <Text style={{ flex: 1, textAlign: 'center', fontSize: 11, fontWeight: '700', color: '#FFFFFF', marginRight: 2 }}>
+                  Active
+                </Text>
+                <View style={{
+                  width: 22,
+                  height: 22,
+                  borderRadius: 11,
+                  backgroundColor: '#FFFFFF',
+                  shadowColor: '#000',
+                  shadowOffset: { width: 0, height: 1 },
+                  shadowOpacity: 0.15,
+                  shadowRadius: 2,
+                  elevation: 2,
+                }} />
+              </>
+            ) : (
+              <>
+                <View style={{
+                  width: 22,
+                  height: 22,
+                  borderRadius: 11,
+                  backgroundColor: '#FFFFFF',
+                  shadowColor: '#000',
+                  shadowOffset: { width: 0, height: 1 },
+                  shadowOpacity: 0.15,
+                  shadowRadius: 2,
+                  elevation: 2,
+                }} />
+                <Text style={{ flex: 1, textAlign: 'center', fontSize: 11, fontWeight: '700', color: '#FFFFFF', marginLeft: 2 }}>
+                  Inactive
+                </Text>
+              </>
+            )}
+          </TouchableOpacity>
         </View>
 
         {/* App icons row */}
@@ -226,6 +276,17 @@ export default function GoalCard({ goal, onDelete }: GoalCardProps) {
             <Text style={{ fontSize: 12, fontWeight: '500', color: '#8B9D77' }}>
               {progressText}
             </Text>
+            {/* Percentage badge */}
+            <View style={{
+              backgroundColor: usagePercent > 80 ? '#FEF2F2' : usagePercent > 50 ? '#FFF8F0' : '#F0F7F0',
+              paddingHorizontal: 8,
+              paddingVertical: 2,
+              borderRadius: 8,
+            }}>
+              <Text style={{ fontSize: 11, fontWeight: '700', color: progressColor }}>
+                {usagePercent}%
+              </Text>
+            </View>
           </View>
           <View style={{ height: 5, backgroundColor: '#F0EDE5', borderRadius: 3, overflow: 'hidden' }}>
             <View

@@ -28,7 +28,7 @@ import {
 } from 'firebase/firestore';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { User, Goal, NewGoal, DailyLog } from './types';
-import { calculateXpReward, getLevelFromXp } from './xp';
+import { calculateXpReward, calculateFinalXp, getLevelFromXp } from './xp';
 
 // Firebase configuration
 const firebaseConfig = {
@@ -84,6 +84,8 @@ export async function createUserDocument(userId: string, email: string, displayN
   const userData: Omit<User, 'id'> = {
     email,
     displayName,
+    profileImage: 1,
+    profileBgColor: '#E8F5E9',
     totalXp: 0,
     currentLevel: 1,
     villageState: 'flourishing',
@@ -140,13 +142,27 @@ function withTimeout<T>(promise: Promise<T>, timeoutMs: number, errorMessage: st
 
 export async function createGoal(userId: string, goalData: NewGoal): Promise<string> {
   const goalsRef = collection(db, 'users', userId, 'goals');
-  const xpReward = calculateXpReward(goalData.type, goalData.limit);
+  const xpReward = calculateXpReward(
+    goalData.type,
+    goalData.limit,
+    goalData.targetApps,
+    goalData.targetCategories || [],
+  );
+
+  // Deactivate all existing goals – new goal becomes the active one
+  const existingGoals = await getDocs(query(goalsRef));
+  for (const goalDoc of existingGoals.docs) {
+    if (goalDoc.data().isActive) {
+      await updateDoc(goalDoc.ref, { isActive: false, updatedAt: Timestamp.now() });
+    }
+  }
   
   const goal: Omit<Goal, 'id'> = {
     ...goalData,
     targetCategories: goalData.targetCategories || [],
     currentProgress: 0,
     xpReward,
+    isActive: true,
     isCompleted: false,
     consecutiveMisses: 0,
     createdAt: Timestamp.now(),
@@ -219,11 +235,20 @@ export async function logProgress(
   
   if (!goalSnap.exists()) return;
   
-  const goal = goalSnap.data() as Omit<Goal, 'id'>;
-  const newProgress = goal.currentProgress + amount;
+  const goal = goalSnap.data() as Omit<Goal, 'id'> & { appProgress?: Record<string, number> };
+
+  // Overwrite per-app value (amount is the total for today, not a delta)
+  const updatedAppProgress = { ...(goal.appProgress || {}) };
+  if (appName) {
+    updatedAppProgress[appName] = amount;
+  }
+
+  // Recalculate total from all per-app values
+  const newProgress = Object.values(updatedAppProgress).reduce((sum, v) => sum + v, 0);
   
   await updateDoc(goalRef, {
     currentProgress: newProgress,
+    appProgress: updatedAppProgress,
     updatedAt: Timestamp.now(),
   });
   
@@ -274,19 +299,22 @@ export async function completeGoal(userId: string, goalId: string) {
     updatedAt: Timestamp.now(),
   });
   
-  // Award XP to user
+  // Award XP to user (with streak multiplier + completion bonus)
   const userRef = doc(db, 'users', userId);
   const userSnap = await getDoc(userRef);
   
   if (userSnap.exists()) {
     const user = userSnap.data() as Omit<User, 'id'>;
-    const newTotalXp = user.totalXp + goal.xpReward;
+    const newStreak = (user.currentStreak || 0) + 1;
+    const earnedXp = calculateFinalXp(goal.xpReward, newStreak);
+    const newTotalXp = user.totalXp + earnedXp;
     const newLevel = getLevelFromXp(newTotalXp);
     
     await updateDoc(userRef, {
       totalXp: newTotalXp,
       currentLevel: newLevel,
       goalsCompleted: user.goalsCompleted + 1,
+      currentStreak: newStreak,
       consecutiveMisses: 0,
       villageState: 'flourishing',
     });
@@ -299,9 +327,11 @@ export async function completeGoal(userId: string, goalId: string) {
   
   if (dailyLogSnap.exists()) {
     const dailyLog = dailyLogSnap.data() as DailyLog;
+    const user = (await getDoc(userRef)).data() as Omit<User, 'id'>;
+    const earnedXp = calculateFinalXp(goal.xpReward, user.currentStreak || 1);
     await updateDoc(dailyLogRef, {
       goalsCompleted: [...dailyLog.goalsCompleted, goalId],
-      xpEarned: dailyLog.xpEarned + goal.xpReward,
+      xpEarned: dailyLog.xpEarned + earnedXp,
     });
   }
 }

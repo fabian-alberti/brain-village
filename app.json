@@ -4,7 +4,7 @@
     "slug": "brain-village",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/icon.png",
+    "icon": "./assets/App Icon.png",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "scheme": "brain-village",
@@ -76,14 +76,14 @@
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/adaptive-icon.png",
+        "foregroundImage": "./assets/App Icon.png",
         "backgroundColor": "#2D5A3D"
       },
       "edgeToEdgeEnabled": true,
       "package": "com.brainvillage.app"
     },
     "web": {
-      "favicon": "./assets/favicon.png",
+      "favicon": "./assets/App Icon.png",
       "bundler": "metro"
     },
     "plugins": [
@@ -92,8 +92,8 @@
       [
         "expo-notifications",
         {
-          "icon": "./assets/icon.png",
-          "color": "#2D5A3D"
+"icon": "./assets/App Icon.png",
+            "color": "#2D5A3D"
         }
       ]
     ],

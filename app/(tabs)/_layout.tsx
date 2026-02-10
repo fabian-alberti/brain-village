@@ -83,17 +83,17 @@ export default function TabLayout() {
       }}
     >
       <Tabs.Screen
-        name="index"
-        options={{
-          title: 'Goals',
-          tabBarIcon: ({ focused }) => <GoalsIcon focused={focused} />,
-        }}
-      />
-      <Tabs.Screen
         name="village"
         options={{
           title: 'Village',
           tabBarIcon: ({ focused }) => <VillageIcon focused={focused} />,
+        }}
+      />
+      <Tabs.Screen
+        name="index"
+        options={{
+          title: 'Goal',
+          tabBarIcon: ({ focused }) => <GoalsIcon focused={focused} />,
         }}
       />
       <Tabs.Screen

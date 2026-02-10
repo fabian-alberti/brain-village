@@ -14,10 +14,11 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import Svg, { Path, Rect, Circle } from 'react-native-svg';
-import { useApp, useGoals } from '@/context/AppContext';
+import { useApp, useGoals, useUser } from '@/context/AppContext';
 import { useDeviceApps } from '@/hooks/useDeviceApps';
 import AppBrandIcon, { CategoryIcon } from '@/components/ui/AppBrandIcon';
 import { GoalType, APP_CATEGORIES, AppCategory, Goal } from '@/lib/types';
+import { getBaseXpForGoal, calculateXpReward, calculateFinalXp, getStreakMultiplier, getAppCountMultiplier, getTotalTrackedApps } from '@/lib/xp';
 
 // ============ ICONS ============
 
@@ -85,7 +86,8 @@ function GridIcon() {
 function AppIcon() {
   return (
     <Svg width={16} height={16} viewBox="0 0 24 24" fill="none">
-      <Rect x="4" y="4" width="16" height="16" rx="3" stroke="#2D5A3D" strokeWidth={2} fill="#E8F5E9" />
+      <Rect x="3" y="3" width="18" height="18" rx="4" fill="#2D5A3D" />
+      <Rect x="7" y="7" width="10" height="10" rx="2" fill="#E8F5E9" />
     </Svg>
   );
 }
@@ -209,7 +211,11 @@ function AppPickerModal({ visible, availableCategories, isDeviceFiltered, initia
     return category.apps.filter(a => tempApps.includes(a.name)).length;
   };
 
-  const totalSelections = tempCategories.length + tempApps.length;
+  // Count actual apps: expand each selected category to its app count
+  const totalSelections = tempApps.length + tempCategories.reduce((sum, catId) => {
+    const cat = availableCategories.find(c => c.id === catId);
+    return sum + (cat ? cat.apps.length : 0);
+  }, 0);
 
   // Filter categories by search
   const filteredCategories = searchQuery.trim()
@@ -232,7 +238,7 @@ function AppPickerModal({ visible, availableCategories, isDeviceFiltered, initia
         </View>
 
         {/* Category List */}
-        <View style={{ flex: 1, marginHorizontal: 16, borderRadius: 12, borderWidth: 1, borderColor: '#E0E0E0', overflow: 'hidden', backgroundColor: 'white' }}>
+        <View style={{ flexShrink: 1, marginHorizontal: 16, borderRadius: 12, borderWidth: 1, borderColor: '#E8E8E8', overflow: 'hidden', backgroundColor: 'white' }}>
           <ScrollView>
             {/* All Apps & Categories */}
             <TouchableOpacity
@@ -264,7 +270,14 @@ function AppPickerModal({ visible, availableCategories, isDeviceFiltered, initia
                   </Svg>
                 )}
               </View>
-              <Text style={{ fontSize: 15, marginRight: 8 }}>📱</Text>
+              <View style={{ marginRight: 10, width: 22, alignItems: 'center' }}>
+                <Svg width={18} height={18} viewBox="0 0 24 24" fill="none">
+                  <Rect x="3" y="3" width="8" height="8" rx="2" fill="#2D5A3D" />
+                  <Rect x="13" y="3" width="8" height="8" rx="2" fill="#2D5A3D" />
+                  <Rect x="3" y="13" width="8" height="8" rx="2" fill="#2D5A3D" />
+                  <Rect x="13" y="13" width="8" height="8" rx="2" fill="#2D5A3D" />
+                </Svg>
+              </View>
               <Text style={{ flex: 1, fontSize: 15, color: '#1A1A1A', fontWeight: '500' }}>All Apps & Categories</Text>
             </TouchableOpacity>
 
@@ -330,7 +343,7 @@ function AppPickerModal({ visible, availableCategories, isDeviceFiltered, initia
 
                   {/* Expanded apps list */}
                   {isExpanded && (
-                    <View style={{ backgroundColor: '#FAFAF5', paddingLeft: 52 }}>
+                    <View style={{ backgroundColor: '#FFFFFF', paddingLeft: 36 }}>
                       {category.apps
                         .filter(app => !searchQuery.trim() || app.name.toLowerCase().includes(searchQuery.toLowerCase()))
                         .map(app => {
@@ -344,6 +357,7 @@ function AppPickerModal({ visible, availableCategories, isDeviceFiltered, initia
                                 flexDirection: 'row',
                                 alignItems: 'center',
                                 paddingVertical: 12,
+                                paddingLeft: 16,
                                 paddingRight: 16,
                                 borderBottomWidth: 1,
                                 borderBottomColor: '#F0EDE5',
@@ -352,7 +366,7 @@ function AppPickerModal({ visible, availableCategories, isDeviceFiltered, initia
                               <View style={{
                                 width: 20,
                                 height: 20,
-                                borderRadius: 4,
+                                borderRadius: 10,
                                 borderWidth: 2,
                                 borderColor: appSelected ? '#2D5A3D' : '#CCC',
                                 backgroundColor: appSelected ? '#2D5A3D' : 'transparent',
@@ -393,7 +407,10 @@ function AppPickerModal({ visible, availableCategories, isDeviceFiltered, initia
             paddingVertical: 10,
             marginBottom: 12,
           }}>
-            <Text style={{ fontSize: 16, color: '#999', marginRight: 8 }}>🔍</Text>
+            <Svg width={16} height={16} viewBox="0 0 24 24" fill="none" style={{ marginRight: 8 }}>
+              <Circle cx="11" cy="11" r="7" stroke="#999" strokeWidth={2} />
+              <Path d="M16 16L20 20" stroke="#999" strokeWidth={2} strokeLinecap="round" />
+            </Svg>
             <TextInput
               placeholder="Search"
               placeholderTextColor="#999"
@@ -440,6 +457,7 @@ export default function CreateGoalScreen() {
   const { edit } = useLocalSearchParams<{ edit?: string }>();
   const { addGoal, updateGoalData } = useApp();
   const goals = useGoals();
+  const user = useUser();
   const { categories: deviceCategories, isDeviceFiltered } = useDeviceApps();
 
   const [isLoading, setIsLoading] = useState(false);
@@ -461,6 +479,16 @@ export default function CreateGoalScreen() {
   // Time display
   const hours = Math.floor(limit / 60);
   const mins = limit % 60;
+
+  // XP preview (use device-filtered categories for accurate app counts)
+  const pureBaseXp = getBaseXpForGoal(type, limit);
+  const appMult = getAppCountMultiplier(selectedApps, selectedCategories, deviceCategories);
+  const totalTrackedApps = getTotalTrackedApps(selectedApps, selectedCategories, deviceCategories);
+  const goalXp = calculateXpReward(type, limit, selectedApps, selectedCategories, deviceCategories);
+  const currentStreak = user?.currentStreak ?? 0;
+  const nextStreak = currentStreak + 1;
+  const streakMult = getStreakMultiplier(nextStreak);
+  const finalXp = calculateFinalXp(goalXp, nextStreak);
 
   const dismissOrGoBack = () => {
     if (Platform.OS === 'web') {
@@ -527,16 +555,51 @@ export default function CreateGoalScreen() {
 
     setIsLoading(true);
     try {
-      const goalData = {
+      const newTargetApps = type === 'overall_screen_time' ? [] : selectedApps;
+      const newTargetCategories = type === 'overall_screen_time' ? [] : selectedCategories;
+
+      // Compute XP here using device-filtered categories for accurate app counts
+      const xpReward = calculateXpReward(type, limit, newTargetApps, newTargetCategories, deviceCategories);
+
+      const goalData: Record<string, any> = {
         name: name.trim(),
         icon: '',
         type,
-        targetApps: type === 'overall_screen_time' ? [] : selectedApps,
-        targetCategories: type === 'overall_screen_time' ? [] : selectedCategories,
+        targetApps: newTargetApps,
+        targetCategories: newTargetCategories,
         limit,
+        xpReward,
       };
 
+      // When editing, clean up appProgress & currentProgress for removed apps/categories
       if (isEditing && edit) {
+        const existingGoal = goals.find(g => g.id === edit);
+        if (existingGoal?.appProgress) {
+          // Build a set of all app names that are still tracked
+          const stillTrackedApps = new Set<string>(newTargetApps);
+          for (const catId of newTargetCategories) {
+            const cat = APP_CATEGORIES.find(c => c.id === catId);
+            if (cat) {
+              cat.apps.forEach(app => stillTrackedApps.add(app.name));
+            }
+          }
+
+          // Calculate progress to subtract for removed apps
+          let removedProgress = 0;
+          const cleanedAppProgress: Record<string, number> = {};
+
+          for (const [appName, value] of Object.entries(existingGoal.appProgress)) {
+            if (stillTrackedApps.has(appName)) {
+              cleanedAppProgress[appName] = value;
+            } else {
+              removedProgress += value;
+            }
+          }
+
+          goalData.appProgress = cleanedAppProgress;
+          goalData.currentProgress = Math.max(0, (existingGoal.currentProgress || 0) - removedProgress);
+        }
+
         await updateGoalData(edit, goalData);
       } else {
         await addGoal(goalData);
@@ -871,7 +934,7 @@ export default function CreateGoalScreen() {
             ) : (
               /* Time Goal Picker */
               <View>
-                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginBottom: 20 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'center', marginBottom: 20 }}>
                   {/* Minus button */}
                   <TouchableOpacity
                     onPress={() => adjustTime(-30)}
@@ -884,39 +947,45 @@ export default function CreateGoalScreen() {
                       borderColor: '#1A1A1A',
                       alignItems: 'center',
                       justifyContent: 'center',
+                      marginTop: 2,
                     }}
                   >
                     <Text style={{ fontSize: 22, fontWeight: '600', color: '#1A1A1A', lineHeight: 24 }}>-</Text>
                   </TouchableOpacity>
 
-                  {/* Hours */}
-                  <View style={{
-                    marginLeft: 16,
-                    borderWidth: 1.5,
-                    borderColor: '#2D5A3D',
-                    borderRadius: 10,
-                    paddingHorizontal: 16,
-                    paddingVertical: 10,
-                    alignItems: 'center',
-                    minWidth: 56,
-                  }}>
-                    <Text style={{ fontSize: 24, fontWeight: '700', color: '#1A1A1A' }}>{hours}</Text>
+                  {/* Hours column */}
+                  <View style={{ alignItems: 'center', marginLeft: 16 }}>
+                    <View style={{
+                      borderWidth: 1.5,
+                      borderColor: '#2D5A3D',
+                      borderRadius: 10,
+                      paddingHorizontal: 16,
+                      paddingVertical: 10,
+                      alignItems: 'center',
+                      minWidth: 56,
+                    }}>
+                      <Text style={{ fontSize: 24, fontWeight: '700', color: '#1A1A1A' }}>{hours}</Text>
+                    </View>
+                    <Text style={{ fontSize: 12, color: '#8B9D77', marginTop: 4 }}>hours</Text>
                   </View>
 
                   {/* Colon separator */}
-                  <Text style={{ fontSize: 24, fontWeight: '700', color: '#1A1A1A', marginHorizontal: 8 }}>:</Text>
+                  <Text style={{ fontSize: 24, fontWeight: '700', color: '#1A1A1A', marginHorizontal: 8, marginTop: 10 }}>:</Text>
 
-                  {/* Minutes */}
-                  <View style={{
-                    borderWidth: 1.5,
-                    borderColor: '#2D5A3D',
-                    borderRadius: 10,
-                    paddingHorizontal: 16,
-                    paddingVertical: 10,
-                    alignItems: 'center',
-                    minWidth: 56,
-                  }}>
-                    <Text style={{ fontSize: 24, fontWeight: '700', color: '#1A1A1A' }}>{mins.toString().padStart(2, '0')}</Text>
+                  {/* Minutes column */}
+                  <View style={{ alignItems: 'center' }}>
+                    <View style={{
+                      borderWidth: 1.5,
+                      borderColor: '#2D5A3D',
+                      borderRadius: 10,
+                      paddingHorizontal: 16,
+                      paddingVertical: 10,
+                      alignItems: 'center',
+                      minWidth: 56,
+                    }}>
+                      <Text style={{ fontSize: 24, fontWeight: '700', color: '#1A1A1A' }}>{mins.toString().padStart(2, '0')}</Text>
+                    </View>
+                    <Text style={{ fontSize: 12, color: '#8B9D77', marginTop: 4 }}>mins</Text>
                   </View>
 
                   {/* Plus button */}
@@ -932,16 +1001,11 @@ export default function CreateGoalScreen() {
                       borderColor: '#1A1A1A',
                       alignItems: 'center',
                       justifyContent: 'center',
+                      marginTop: 2,
                     }}
                   >
                     <Text style={{ fontSize: 22, fontWeight: '600', color: '#1A1A1A', lineHeight: 24 }}>+</Text>
                   </TouchableOpacity>
-                </View>
-
-                {/* Labels */}
-                <View style={{ flexDirection: 'row', justifyContent: 'center', marginBottom: 20, marginTop: -12 }}>
-                  <Text style={{ fontSize: 12, color: '#888', marginLeft: 60, width: 56, textAlign: 'center' }}>hours</Text>
-                  <Text style={{ fontSize: 12, color: '#888', marginLeft: 28, width: 56, textAlign: 'center' }}>mins</Text>
                 </View>
 
                 {/* Presets */}
@@ -973,6 +1037,69 @@ export default function CreateGoalScreen() {
                 </View>
               </View>
             )}
+          </View>
+
+          {/* XP Reward Preview */}
+          <View style={{
+            marginTop: 28,
+            backgroundColor: 'white',
+            borderRadius: 16,
+            padding: 20,
+            borderWidth: 1,
+            borderColor: '#E8F5E9',
+          }}>
+            <Text style={{ fontSize: 15, fontWeight: '600', color: '#1A1A1A', marginBottom: 16 }}>
+              XP Reward
+            </Text>
+
+            {/* Base XP */}
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+              <Text style={{ fontSize: 14, color: '#8B9D77' }}>Base XP</Text>
+              <Text style={{ fontSize: 14, fontWeight: '700', color: '#1A1A1A' }}>{pureBaseXp} XP</Text>
+            </View>
+
+            {/* App count multiplier */}
+            {appMult > 1 && (
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                <View>
+                  <Text style={{ fontSize: 14, color: '#8B9D77' }}>App Bonus</Text>
+                  <Text style={{ fontSize: 12, color: '#B0BCA4', marginTop: 2 }}>
+                    {totalTrackedApps} {totalTrackedApps === 1 ? 'app' : 'apps'} tracked
+                  </Text>
+                </View>
+                <Text style={{ fontSize: 14, fontWeight: '700', color: '#2D5A3D' }}>
+                  x{appMult.toFixed(2)}
+                </Text>
+              </View>
+            )}
+
+            {/* Completion bonus */}
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+              <Text style={{ fontSize: 14, color: '#8B9D77' }}>Completion Bonus</Text>
+              <Text style={{ fontSize: 14, fontWeight: '700', color: '#1A1A1A' }}>+5 XP</Text>
+            </View>
+
+            {/* Streak multiplier */}
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+              <View>
+                <Text style={{ fontSize: 14, color: '#8B9D77' }}>Streak Multiplier</Text>
+                <Text style={{ fontSize: 12, color: '#B0BCA4', marginTop: 2 }}>
+                  {currentStreak > 0 ? `${currentStreak} day streak` : 'No streak yet'}
+                </Text>
+              </View>
+              <Text style={{ fontSize: 14, fontWeight: '700', color: streakMult > 1 ? '#2D5A3D' : '#1A1A1A' }}>
+                x{streakMult}
+              </Text>
+            </View>
+
+            {/* Divider */}
+            <View style={{ height: 1, backgroundColor: '#F0EDE5', marginBottom: 12 }} />
+
+            {/* Total */}
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+              <Text style={{ fontSize: 16, fontWeight: '700', color: '#1A1A1A' }}>Total</Text>
+              <Text style={{ fontSize: 20, fontWeight: '800', color: '#F4A261' }}>+{finalXp} XP</Text>
+            </View>
           </View>
         </ScrollView>
       </KeyboardAvoidingView>

@@ -11,17 +11,8 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import Svg, { Path } from 'react-native-svg';
+import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { useTheme } from '@/context/ThemeContext';
-
-// Back Arrow Icon
-function ArrowLeftIcon({ color }: { color: string }) {
-  return (
-    <Svg width={28} height={28} viewBox="0 0 24 24" fill={color}>
-      <Path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z" />
-    </Svg>
-  );
-}
 
 export default function ResetPasswordScreen() {
   const router = useRouter();
@@ -95,10 +86,22 @@ export default function ResetPasswordScreen() {
           }}>
             <TouchableOpacity 
               onPress={() => router.back()}
-              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-              style={{ padding: 4 }}
+              activeOpacity={0.7}
+              style={{
+                width: 36,
+                height: 36,
+                borderRadius: 10,
+                backgroundColor: '#FFFFFF',
+                alignItems: 'center',
+                justifyContent: 'center',
+                shadowColor: '#000',
+                shadowOffset: { width: 0, height: 1 },
+                shadowOpacity: 0.08,
+                shadowRadius: 4,
+                elevation: 2,
+              }}
             >
-              <ArrowLeftIcon color={colors.icon} />
+              <MaterialCommunityIcons name="chevron-left" size={22} color="#1A1A1A" />
             </TouchableOpacity>
             <Text style={{
               flex: 1,

@@ -17,7 +17,7 @@ const blurActiveElement = () => {
 export default function GoalsScreen() {
   const router = useRouter();
   const goals = useGoals();
-  const { removeGoal } = useApp();
+  const { removeGoal, toggleGoalActive } = useApp();
   const [refreshing, setRefreshing] = useState(false);
 
   const onRefresh = useCallback(() => {
@@ -94,6 +94,7 @@ export default function GoalsScreen() {
             <GoalCard
               goal={item}
               onDelete={() => handleDeleteGoal(item.id, item.name)}
+              onToggleActive={() => toggleGoalActive(item.id)}
             />
           )}
           contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 20 }}
