@@ -31,18 +31,28 @@ import {
   getDocs
 } from 'firebase/firestore';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import Constants from 'expo-constants';
 import { User, Goal, NewGoal, DailyLog } from './types';
 import { calculateXpReward, calculateFinalXp, getLevelFromXp } from './xp';
 
-// Firebase configuration
+const extra = Constants.expoConfig?.extra ?? {};
+
+const FIREBASE_API_KEY = 'AIzaSyB8iABywpUX-I5BAX7CnJtiqkV9wQJH9zo';
+const FIREBASE_AUTH_DOMAIN = 'brain-village-c343e.firebaseapp.com';
+const FIREBASE_PROJECT_ID = 'brain-village-c343e';
+const FIREBASE_STORAGE_BUCKET = 'brain-village-c343e.firebasestorage.app';
+const FIREBASE_MESSAGING_SENDER_ID = '468784405636';
+const FIREBASE_APP_ID = '1:468784405636:web:69e9b7ec0d4040039536d1';
+const FIREBASE_MEASUREMENT_ID = 'G-RFSQ63053R';
+
 const firebaseConfig = {
-    apiKey: "AIzaSyB8iABywpUX-I5BAX7CnJtiqkV9wQJH9zo",
-    authDomain: "brain-village-c343e.firebaseapp.com",
-    projectId: "brain-village-c343e",
-    storageBucket: "brain-village-c343e.firebasestorage.app",
-    messagingSenderId: "468784405636",
-    appId: "1:468784405636:web:69e9b7ec0d4040039536d1",
-    measurementId: "G-RFSQ63053R"
+  apiKey: extra.firebaseApiKey ?? FIREBASE_API_KEY,
+  authDomain: extra.firebaseAuthDomain ?? FIREBASE_AUTH_DOMAIN,
+  projectId: extra.firebaseProjectId ?? FIREBASE_PROJECT_ID,
+  storageBucket: extra.firebaseStorageBucket ?? FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: extra.firebaseMessagingSenderId ?? FIREBASE_MESSAGING_SENDER_ID,
+  appId: extra.firebaseAppId ?? FIREBASE_APP_ID,
+  measurementId: extra.firebaseMeasurementId ?? FIREBASE_MEASUREMENT_ID,
 };
 
 // Initialize Firebase
@@ -303,33 +313,33 @@ export async function logProgress(
     updatedAt: Timestamp.now(),
   });
   
-  // Update daily log
+  // Update daily log — upsert by appName to avoid unbounded growth.
+  // Each app gets at most one entry per day; its values are overwritten
+  // on every progress update rather than appending a new row each time.
+  const entryKey = appName || 'Screen Time';
   const today = new Date().toISOString().split('T')[0];
   const dailyLogRef = doc(db, 'users', userId, 'dailyLogs', today);
   const dailyLogSnap = await getDoc(dailyLogRef);
-  
+
+  const newEntry = {
+    appName: entryKey,
+    minutes: goal.type === 'app_opens_limit' ? 0 : amount,
+    opens: goal.type === 'app_opens_limit' ? amount : 0,
+    loggedAt: Timestamp.now(),
+  };
+
   if (dailyLogSnap.exists()) {
     const dailyLog = dailyLogSnap.data() as DailyLog;
-    await updateDoc(dailyLogRef, {
-      entries: [
-        ...dailyLog.entries,
-        {
-          appName: appName || 'Screen Time',
-          minutes: goal.type === 'app_opens_limit' ? 0 : amount,
-          opens: goal.type === 'app_opens_limit' ? amount : 0,
-          loggedAt: Timestamp.now(),
-        }
-      ]
-    });
+    const existingIdx = dailyLog.entries.findIndex(e => e.appName === entryKey);
+    const updatedEntries =
+      existingIdx >= 0
+        ? dailyLog.entries.map((e, i) => (i === existingIdx ? newEntry : e))
+        : [...dailyLog.entries, newEntry];
+    await updateDoc(dailyLogRef, { entries: updatedEntries });
   } else {
     await setDoc(dailyLogRef, {
       date: today,
-      entries: [{
-        appName: appName || 'Screen Time',
-        minutes: goal.type === 'app_opens_limit' ? 0 : amount,
-        opens: goal.type === 'app_opens_limit' ? amount : 0,
-        loggedAt: Timestamp.now(),
-      }],
+      entries: [newEntry],
       goalsCompleted: [],
       xpEarned: 0,
     });

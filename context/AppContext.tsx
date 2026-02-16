@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useEffect, useReducer, useRef, useCallback, ReactNode } from 'react';
-import { AppState, AppStateStatus } from 'react-native';
+import { AppState as RNAppState, AppStateStatus } from 'react-native';
 import { User as FirebaseUser } from 'firebase/auth';
 import { Timestamp } from 'firebase/firestore';
 import { User, Goal, NewGoal, ScreenTimeStatus } from '@/lib/types';
@@ -24,7 +24,7 @@ import {
 } from '@/lib/firebase';
 import {
   getScreenTimeToday,
-  getPerAppScreenTime,
+  filterPerAppScreenTime,
   hasPermission as hasScreenTimePermission,
   requestPermission as requestScreenTimePermissionNative,
   isSimulationMode,
@@ -40,11 +40,9 @@ import {
   cancelAllNotifications,
   resetProgressWarnings,
 } from '@/lib/notifications';
+import { TEST_MODE } from '@/lib/config';
 
-// ──────────────────────────────────────────────
-// Set to true to bypass Firebase auth for testing
-export const TEST_MODE = true;
-// ──────────────────────────────────────────────
+export { TEST_MODE };
 
 const MOCK_USER: User = {
   id: 'test-user-001',
@@ -373,8 +371,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     runDailyReset();
 
     // Run when app comes to foreground
-    let prevState: AppStateStatus = AppState.currentState;
-    const sub = AppState.addEventListener('change', (nextState) => {
+    let prevState: AppStateStatus = RNAppState.currentState;
+    const sub = RNAppState.addEventListener('change', (nextState) => {
       if (prevState.match(/inactive|background/) && nextState === 'active') {
         runDailyReset();
       }
@@ -385,8 +383,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [state.firebaseUser, runDailyReset]);
 
   // ── SCREEN TIME TRACKING ──
-  // Fetches screen time from native APIs (or simulation) on mount and
-  // every time the app comes to foreground, then auto-updates active goals.
+  // Fetches screen time from native APIs (or simulation) on mount,
+  // every time the app comes to foreground, and on a periodic interval,
+  // then auto-updates active goals.
 
   const fetchAndUpdateScreenTime = useCallback(async () => {
     const today = await getScreenTimeToday();
@@ -399,14 +398,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
       },
     });
 
-    // Auto-update active goals with the new screen time data
     const currentGoals = goalsRef.current;
     const uid = firebaseUserRef.current?.uid;
 
     for (const goal of currentGoals) {
       if (!goal.isActive || goal.isCompleted) continue;
 
-      // overall_screen_time → use total minutes
       if (goal.type === 'overall_screen_time') {
         if (today.totalMinutes > goal.currentProgress) {
           if (TEST_MODE) {
@@ -432,10 +429,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
         }
       }
 
-      // app_time_limit → use per-app minutes
+      if (goal.type === 'app_time_limit') {
       if (goal.type === 'app_time_limit') {
         const trackedApps = [...goal.targetApps];
-        const perApp = await getPerAppScreenTime(trackedApps);
+        for (const catId of (goal.targetCategories || [])) {
+          const cat = APP_CATEGORIES.find(c => c.id === catId);
+          if (cat) {
+            cat.apps.forEach(a => trackedApps.push(a.name));
+          }
+        }
+        const perApp = filterPerAppScreenTime(trackedApps, today.perApp);
+
         let changed = false;
         const updatedAppProgress = { ...(goal.appProgress || {}) };
 
@@ -475,39 +479,51 @@ export function AppProvider({ children }: { children: ReactNode }) {
           );
         }
       }
+
+      // TODO: app_opens_limit goals are not tracked automatically.
+      // Android's UsageStatsManager does not expose per-app open counts.
+      // A custom native implementation (e.g. UsageEvents query) is needed
+      // to count app launches and feed them into goal progress here.
     }
   }, []);
 
-  // Check permission on auth and refresh screen time on foreground
+  // Check permission on auth, refresh on foreground, and poll periodically
   useEffect(() => {
     if (!state.firebaseUser) return;
 
-    // Check permission on init
-    hasScreenTimePermission().then(hasPerm => {
+    const POLL_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
+
+    const checkAndFetch = async () => {
+      const hasPerm = await hasScreenTimePermission();
       dispatch({
         type: 'SET_SCREEN_TIME',
         payload: { hasPermission: hasPerm },
       });
-      if (hasPerm) fetchAndUpdateScreenTime();
-    });
+      if (hasPerm) {
+        await runDailyReset();
+        await fetchAndUpdateScreenTime();
+      }
+    };
 
-    // Refresh on foreground
-    let prevAppState: AppStateStatus = AppState.currentState;
-    const sub = AppState.addEventListener('change', async (nextState) => {
+    checkAndFetch();
+
+    let prevAppState: AppStateStatus = RNAppState.currentState;
+    const sub = RNAppState.addEventListener('change', async (nextState) => {
       if (prevAppState.match(/inactive|background/) && nextState === 'active') {
-        // Re-check permission (user may have just granted it in settings)
-        const hasPerm = await hasScreenTimePermission();
-        dispatch({
-          type: 'SET_SCREEN_TIME',
-          payload: { hasPermission: hasPerm },
-        });
-        if (hasPerm) fetchAndUpdateScreenTime();
+        await checkAndFetch();
       }
       prevAppState = nextState;
     });
 
-    return () => sub.remove();
-  }, [state.firebaseUser, fetchAndUpdateScreenTime]);
+    const interval = setInterval(() => {
+      fetchAndUpdateScreenTime();
+    }, POLL_INTERVAL_MS);
+
+    return () => {
+      sub.remove();
+      clearInterval(interval);
+    };
+  }, [state.firebaseUser, fetchAndUpdateScreenTime, runDailyReset]);
 
   // Open native settings to grant screen time permission
   const requestScreenTimePermission = useCallback(async (): Promise<boolean> => {

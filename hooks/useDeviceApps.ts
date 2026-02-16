@@ -1,13 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Linking, Platform } from 'react-native';
 import { APP_CATEGORIES, AppCategory } from '@/lib/types';
-
-// ──────────────────────────────────────────────────────────────
-// SIMULATE_DEVICE_APPS
-// Set to true to pretend only a subset of apps are installed.
-// This lets you test the filtered UI on web or in Expo Go.
-// Set to false for production / real device detection.
-const SIMULATE_DEVICE_APPS = true;
+import { SIMULATE_DEVICE_APPS } from '@/lib/config';
 
 // The apps that the simulator pretends are "installed".
 // Change this list to test different scenarios.

@@ -7,7 +7,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { AppProvider, useApp, TEST_MODE } from '@/context/AppContext';
 import { ThemeProvider, useTheme } from '@/context/ThemeContext';
 import '../global.css';
-import { isSimulationMode } from '@/lib/screenTime';
+import { isSimulationMode, isNativeAvailable } from '@/lib/screenTime';
 
 // Ensure NativeWind / CSS interop is aligned with Tailwind darkMode="class" on web.
 // This prevents runtime crashes like:
@@ -28,9 +28,11 @@ function RootLayoutNav() {
   const segments = useSegments();
   const router = useRouter();
 
-  // In simulation mode or TEST_MODE, permission is always considered granted
+  // In simulation mode, TEST_MODE, or when native APIs are unavailable
+  // (e.g. iOS without FamilyControls entitlement), skip the permission gate
+  // so users are not permanently stuck on the permission screen.
   const hasScreenTimePermission =
-    isSimulationMode() || TEST_MODE || screenTimeStatus.hasPermission;
+    isSimulationMode() || TEST_MODE || !isNativeAvailable() || screenTimeStatus.hasPermission;
 
   useEffect(() => {
     if (isLoading) return;
