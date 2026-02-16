@@ -12,13 +12,8 @@
  * mock data so the app can be tested in Expo Go without native builds.
  */
 
-// ──────────────────────────────────────────────────────────────
-// SIMULATE_SCREEN_TIME
-// Set to true to use simulated screen time data for testing.
-// This lets you test the full app flow in Expo Go or on web.
-// Set to false for production builds with real native APIs.
-const SIMULATE_SCREEN_TIME = true;
-// ──────────────────────────────────────────────────────────────
+import { SIMULATE_SCREEN_TIME } from './config';
+import type { ExpoScreenTimeInterface } from '../modules/expo-screen-time';
 
 // ─── Types ─────────────────────────────────────────────────────
 
@@ -30,10 +25,10 @@ export interface DailyScreenTime {
 
 // ─── Native Module Bridge ──────────────────────────────────────
 
-let _nativeModule: any = null;
+let _nativeModule: ExpoScreenTimeInterface | null = null;
 let _nativeChecked = false;
 
-function getNativeModule(): any {
+function getNativeModule(): ExpoScreenTimeInterface | null {
   if (_nativeChecked) return _nativeModule;
   _nativeChecked = true;
   try {
@@ -146,17 +141,18 @@ export async function getScreenTimeToday(): Promise<DailyScreenTime> {
 }
 
 /**
- * Get per-app screen time for a specific set of tracked apps.
- * Filters native data to only include the requested apps.
+ * Filter per-app screen time for a specific set of tracked apps.
+ * When `allPerApp` is provided it filters that map directly, avoiding
+ * a redundant re-fetch of screen time data.
  */
-export async function getPerAppScreenTime(
+export function filterPerAppScreenTime(
   trackedApps: string[],
-): Promise<Record<string, number>> {
-  const today = await getScreenTimeToday();
+  allPerApp: Record<string, number>,
+): Record<string, number> {
   const result: Record<string, number> = {};
   for (const app of trackedApps) {
-    if (today.perApp[app] !== undefined) {
-      result[app] = today.perApp[app];
+    if (allPerApp[app] !== undefined) {
+      result[app] = allPerApp[app];
     }
   }
   return result;
