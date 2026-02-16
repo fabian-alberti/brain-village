@@ -17,7 +17,7 @@ import Svg, { Path, Rect, Circle } from 'react-native-svg';
 import { useApp, useGoals, useUser } from '@/context/AppContext';
 import { useDeviceApps } from '@/hooks/useDeviceApps';
 import AppBrandIcon, { CategoryIcon } from '@/components/ui/AppBrandIcon';
-import { GoalType, APP_CATEGORIES, AppCategory, Goal } from '@/lib/types';
+import { GoalType, APP_CATEGORIES, AppCategory, Goal, NewGoal } from '@/lib/types';
 import { getBaseXpForGoal, calculateXpReward, calculateFinalXp, getStreakMultiplier, getAppCountMultiplier, getTotalTrackedApps } from '@/lib/xp';
 
 // ============ ICONS ============
@@ -561,7 +561,7 @@ export default function CreateGoalScreen() {
       // Compute XP here using device-filtered categories for accurate app counts
       const xpReward = calculateXpReward(type, limit, newTargetApps, newTargetCategories, deviceCategories);
 
-      const goalData: Record<string, any> = {
+      const goalData: NewGoal & { xpReward: number; appProgress?: Record<string, number>; currentProgress?: number } = {
         name: name.trim(),
         icon: '',
         type,
