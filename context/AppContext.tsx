@@ -430,8 +430,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }
 
       if (goal.type === 'app_time_limit') {
+      if (goal.type === 'app_time_limit') {
         const trackedApps = [...goal.targetApps];
+        for (const catId of (goal.targetCategories || [])) {
+          const cat = APP_CATEGORIES.find(c => c.id === catId);
+          if (cat) {
+            cat.apps.forEach(a => trackedApps.push(a.name));
+          }
+        }
         const perApp = filterPerAppScreenTime(trackedApps, today.perApp);
+
         let changed = false;
         const updatedAppProgress = { ...(goal.appProgress || {}) };
 
