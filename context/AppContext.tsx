@@ -1,7 +1,8 @@
-import React, { createContext, useContext, useEffect, useReducer, ReactNode } from 'react';
+import React, { createContext, useContext, useEffect, useReducer, useRef, useCallback, ReactNode } from 'react';
+import { AppState, AppStateStatus } from 'react-native';
 import { User as FirebaseUser } from 'firebase/auth';
 import { Timestamp } from 'firebase/firestore';
-import { User, Goal, NewGoal } from '@/lib/types';
+import { User, Goal, NewGoal, ScreenTimeStatus } from '@/lib/types';
 import { calculateXpReward, calculateFinalXp } from '@/lib/xp';
 import { 
   onAuthChange, 
@@ -17,7 +18,28 @@ import {
   deleteGoal as firebaseDeleteGoal,
   logProgress as firebaseLogProgress,
   completeGoal as firebaseCompleteGoal,
+  deleteUserAccount as firebaseDeleteUserAccount,
+  resendVerificationEmail as firebaseResendVerification,
+  reloadCurrentUser as firebaseReloadCurrentUser,
 } from '@/lib/firebase';
+import {
+  getScreenTimeToday,
+  getPerAppScreenTime,
+  hasPermission as hasScreenTimePermission,
+  requestPermission as requestScreenTimePermissionNative,
+  isSimulationMode,
+} from '@/lib/screenTime';
+import {
+  isDailyResetNeeded,
+  performLocalDailyReset,
+  performFirebaseDailyReset,
+} from '@/lib/dailyReset';
+import {
+  syncDailyReminder,
+  checkProgressWarning,
+  cancelAllNotifications,
+  resetProgressWarnings,
+} from '@/lib/notifications';
 
 // ──────────────────────────────────────────────
 // Set to true to bypass Firebase auth for testing
@@ -58,6 +80,8 @@ interface AppState {
   goals: Goal[];
   isLoading: boolean;
   isAuthenticated: boolean;
+  isEmailVerified: boolean;
+  screenTimeStatus: ScreenTimeStatus;
 }
 
 // Action types
@@ -70,15 +94,26 @@ type AppAction =
   | { type: 'ADD_GOAL'; payload: Goal }
   | { type: 'REMOVE_GOAL'; payload: string }
   | { type: 'UPDATE_GOAL'; payload: { id: string; data: Partial<Goal> } }
+  | { type: 'SET_SCREEN_TIME'; payload: Partial<ScreenTimeStatus> }
   | { type: 'SIGN_OUT' };
 
 // Initial state
+const defaultScreenTimeStatus: ScreenTimeStatus = {
+  hasPermission: false,
+  isSimulated: isSimulationMode(),
+  totalMinutesToday: 0,
+  perApp: {},
+  lastUpdated: null,
+};
+
 const initialState: AppState = {
   firebaseUser: null,
   user: null,
   goals: [],
   isLoading: true,
   isAuthenticated: false,
+  isEmailVerified: false,
+  screenTimeStatus: defaultScreenTimeStatus,
 };
 
 // Reducer
@@ -89,6 +124,7 @@ function appReducer(state: AppState, action: AppAction): AppState {
         ...state,
         firebaseUser: action.payload,
         isAuthenticated: !!action.payload,
+        isEmailVerified: action.payload?.emailVerified ?? false,
         isLoading: false,
       };
     case 'SET_USER': {
@@ -146,10 +182,16 @@ function appReducer(state: AppState, action: AppAction): AppState {
           g.id === action.payload.id ? { ...g, ...action.payload.data, updatedAt: Timestamp.now() } : g
         ),
       };
+    case 'SET_SCREEN_TIME':
+      return {
+        ...state,
+        screenTimeStatus: { ...state.screenTimeStatus, ...action.payload },
+      };
     case 'SIGN_OUT':
       return {
         ...initialState,
         isLoading: false,
+        isEmailVerified: false,
       };
     default:
       return state;
@@ -161,6 +203,9 @@ interface AppContextType extends AppState {
   signIn: (email: string, password: string) => Promise<void>;
   signUp: (email: string, password: string, displayName: string) => Promise<void>;
   signOut: () => Promise<void>;
+  deleteAccount: (password: string) => Promise<void>;
+  resendVerificationEmail: () => Promise<void>;
+  refreshEmailVerified: () => Promise<boolean>;
   updateSettings: (settings: Partial<User['settings']>) => Promise<void>;
   updateProfile: (data: Partial<Pick<User, 'displayName' | 'profileImage' | 'profileBgColor'>>) => Promise<void>;
   addGoal: (goalData: NewGoal) => Promise<string>;
@@ -169,6 +214,8 @@ interface AppContextType extends AppState {
   toggleGoalActive: (goalId: string) => Promise<void>;
   logGoalProgress: (goalId: string, amount: number, appName?: string) => Promise<void>;
   markGoalComplete: (goalId: string) => Promise<void>;
+  requestScreenTimePermission: () => Promise<boolean>;
+  refreshScreenTime: () => Promise<void>;
 }
 
 // Create context
@@ -183,7 +230,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (!TEST_MODE) return;
     dispatch({ type: 'SET_USER', payload: MOCK_USER });
     dispatch({ type: 'SET_GOALS', payload: MOCK_GOALS });
-    dispatch({ type: 'SET_FIREBASE_USER', payload: { uid: MOCK_USER.id } as any });
+    dispatch({ type: 'SET_FIREBASE_USER', payload: { uid: MOCK_USER.id, emailVerified: true } as any });
   }, []);
 
   // Listen to auth state changes (skipped in TEST_MODE)
@@ -226,6 +273,252 @@ export function AppProvider({ children }: { children: ReactNode }) {
     };
   }, [state.firebaseUser]);
 
+  // ── NOTIFICATIONS: sync daily reminder when user/settings change ──
+  useEffect(() => {
+    if (!state.user) return;
+    const { notificationsEnabled, reminderTime } = state.user.settings || {
+      notificationsEnabled: true,
+      reminderTime: '09:00',
+    };
+    syncDailyReminder(reminderTime, notificationsEnabled);
+  }, [state.user?.settings?.notificationsEnabled, state.user?.settings?.reminderTime]);
+
+  // ── AUTOMATED DAILY RESET ──
+  // Checks on mount and on app foreground whether a new day has started.
+  // If yes: fails uncompleted active goals, then resets all daily progress.
+
+  const dailyResetRunning = useRef(false);
+  const goalsRef = useRef(state.goals);
+  goalsRef.current = state.goals;
+  const userRef = useRef(state.user);
+  userRef.current = state.user;
+  const firebaseUserRef = useRef(state.firebaseUser);
+  firebaseUserRef.current = state.firebaseUser;
+  const notificationsEnabledRef = useRef(state.user?.settings?.notificationsEnabled ?? true);
+  notificationsEnabledRef.current = state.user?.settings?.notificationsEnabled ?? true;
+
+  const runDailyReset = useCallback(async () => {
+    if (dailyResetRunning.current) return;
+    const userId = state.firebaseUser?.uid;
+    if (!userId) return;
+    const goals = goalsRef.current;
+    if (!goals) return;
+
+    const needed = await isDailyResetNeeded();
+    if (!needed) return;
+
+    dailyResetRunning.current = true;
+    try {
+      if (TEST_MODE) {
+        const result = await performLocalDailyReset(goals, userRef.current);
+        if (result.didReset) {
+          // Fail uncompleted goals locally
+          for (const goalId of result.failedGoalIds) {
+            const goal = goals.find(g => g.id === goalId);
+            if (goal) {
+              dispatch({
+                type: 'UPDATE_GOAL',
+                payload: {
+                  id: goalId,
+                  data: { consecutiveMisses: goal.consecutiveMisses + 1 },
+                },
+              });
+            }
+          }
+          // Update user misses if any goals failed
+          if (result.failedGoalIds.length > 0 && userRef.current) {
+            const totalMisses = userRef.current.consecutiveMisses + 1;
+            dispatch({
+              type: 'SET_USER',
+              payload: {
+                ...userRef.current,
+                consecutiveMisses: totalMisses,
+                currentStreak: 0,
+                villageState: totalMisses >= 2 ? 'destroyed' : userRef.current.villageState,
+              },
+            });
+          }
+          // Reset all goals' daily progress
+          for (const goal of goals) {
+            dispatch({
+              type: 'UPDATE_GOAL',
+              payload: {
+                id: goal.id,
+                data: { currentProgress: 0, appProgress: {}, isCompleted: false },
+              },
+            });
+          }
+          console.log(`[DailyReset] Reset complete. Failed ${result.failedGoalIds.length} goal(s).`);
+          await resetProgressWarnings();
+        }
+      } else {
+        const result = await performFirebaseDailyReset(userId, goals);
+        if (result.didReset) {
+          console.log(`[DailyReset] Firebase reset complete. Failed ${result.failedGoalIds.length} goal(s).`);
+          await resetProgressWarnings();
+        }
+      }
+    } catch (e) {
+      console.error('[DailyReset] Error:', e);
+    } finally {
+      dailyResetRunning.current = false;
+    }
+  }, [state.firebaseUser?.uid]);
+
+  // Run daily reset on initial auth and when app comes to foreground
+  useEffect(() => {
+    if (!state.firebaseUser) return;
+
+    // Run immediately on auth
+    runDailyReset();
+
+    // Run when app comes to foreground
+    let prevState: AppStateStatus = AppState.currentState;
+    const sub = AppState.addEventListener('change', (nextState) => {
+      if (prevState.match(/inactive|background/) && nextState === 'active') {
+        runDailyReset();
+      }
+      prevState = nextState;
+    });
+
+    return () => sub.remove();
+  }, [state.firebaseUser, runDailyReset]);
+
+  // ── SCREEN TIME TRACKING ──
+  // Fetches screen time from native APIs (or simulation) on mount and
+  // every time the app comes to foreground, then auto-updates active goals.
+
+  const fetchAndUpdateScreenTime = useCallback(async () => {
+    const today = await getScreenTimeToday();
+    dispatch({
+      type: 'SET_SCREEN_TIME',
+      payload: {
+        totalMinutesToday: today.totalMinutes,
+        perApp: today.perApp,
+        lastUpdated: new Date(),
+      },
+    });
+
+    // Auto-update active goals with the new screen time data
+    const currentGoals = goalsRef.current;
+    const uid = firebaseUserRef.current?.uid;
+
+    for (const goal of currentGoals) {
+      if (!goal.isActive || goal.isCompleted) continue;
+
+      // overall_screen_time → use total minutes
+      if (goal.type === 'overall_screen_time') {
+        if (today.totalMinutes > goal.currentProgress) {
+          if (TEST_MODE) {
+            dispatch({
+              type: 'UPDATE_GOAL',
+              payload: {
+                id: goal.id,
+                data: { currentProgress: today.totalMinutes },
+              },
+            });
+          } else if (uid) {
+            firebaseLogProgress(uid, goal.id, today.totalMinutes).catch(e =>
+              console.error('[ScreenTime] Failed to log progress:', e)
+            );
+          }
+          checkProgressWarning(
+            goal.id,
+            goal.name,
+            today.totalMinutes,
+            goal.limit,
+            notificationsEnabledRef.current,
+          );
+        }
+      }
+
+      // app_time_limit → use per-app minutes
+      if (goal.type === 'app_time_limit') {
+        const trackedApps = [...goal.targetApps];
+        const perApp = await getPerAppScreenTime(trackedApps);
+        let changed = false;
+        const updatedAppProgress = { ...(goal.appProgress || {}) };
+
+        for (const [appName, minutes] of Object.entries(perApp)) {
+          const current = updatedAppProgress[appName] || 0;
+          if (minutes > current) {
+            updatedAppProgress[appName] = minutes;
+            changed = true;
+          }
+        }
+
+        if (changed) {
+          const newTotal = Object.values(updatedAppProgress).reduce((s, v) => s + v, 0);
+          if (TEST_MODE) {
+            dispatch({
+              type: 'UPDATE_GOAL',
+              payload: {
+                id: goal.id,
+                data: { currentProgress: newTotal, appProgress: updatedAppProgress },
+              },
+            });
+          } else if (uid) {
+            for (const [appName, minutes] of Object.entries(perApp)) {
+              if (minutes > (goal.appProgress?.[appName] || 0)) {
+                firebaseLogProgress(uid, goal.id, minutes, appName).catch(e =>
+                  console.error('[ScreenTime] Failed to log per-app progress:', e)
+                );
+              }
+            }
+          }
+          checkProgressWarning(
+            goal.id,
+            goal.name,
+            newTotal,
+            goal.limit,
+            notificationsEnabledRef.current,
+          );
+        }
+      }
+    }
+  }, []);
+
+  // Check permission on auth and refresh screen time on foreground
+  useEffect(() => {
+    if (!state.firebaseUser) return;
+
+    // Check permission on init
+    hasScreenTimePermission().then(hasPerm => {
+      dispatch({
+        type: 'SET_SCREEN_TIME',
+        payload: { hasPermission: hasPerm },
+      });
+      if (hasPerm) fetchAndUpdateScreenTime();
+    });
+
+    // Refresh on foreground
+    let prevAppState: AppStateStatus = AppState.currentState;
+    const sub = AppState.addEventListener('change', async (nextState) => {
+      if (prevAppState.match(/inactive|background/) && nextState === 'active') {
+        // Re-check permission (user may have just granted it in settings)
+        const hasPerm = await hasScreenTimePermission();
+        dispatch({
+          type: 'SET_SCREEN_TIME',
+          payload: { hasPermission: hasPerm },
+        });
+        if (hasPerm) fetchAndUpdateScreenTime();
+      }
+      prevAppState = nextState;
+    });
+
+    return () => sub.remove();
+  }, [state.firebaseUser, fetchAndUpdateScreenTime]);
+
+  // Open native settings to grant screen time permission
+  const requestScreenTimePermission = useCallback(async (): Promise<boolean> => {
+    return requestScreenTimePermissionNative();
+  }, []);
+
+  // Manual refresh of screen time data
+  const refreshScreenTime = useCallback(async () => {
+    await fetchAndUpdateScreenTime();
+  }, [fetchAndUpdateScreenTime]);
+
   // Auth functions
   const signIn = async (email: string, password: string) => {
     if (TEST_MODE) return;
@@ -251,11 +544,38 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (TEST_MODE) return;
     dispatch({ type: 'SET_LOADING', payload: true });
     try {
+      await cancelAllNotifications();
       await firebaseSignOut();
       dispatch({ type: 'SIGN_OUT' });
     } finally {
       dispatch({ type: 'SET_LOADING', payload: false });
     }
+  };
+
+  const deleteAccount = async (password: string) => {
+    if (TEST_MODE) return;
+    dispatch({ type: 'SET_LOADING', payload: true });
+    try {
+      await firebaseDeleteUserAccount(password);
+      dispatch({ type: 'SIGN_OUT' });
+    } finally {
+      dispatch({ type: 'SET_LOADING', payload: false });
+    }
+  };
+
+  const resendVerificationEmail = async () => {
+    if (TEST_MODE) return;
+    await firebaseResendVerification();
+  };
+
+  const refreshEmailVerified = async (): Promise<boolean> => {
+    if (TEST_MODE) return true;
+    const refreshedUser = await firebaseReloadCurrentUser();
+    if (refreshedUser) {
+      dispatch({ type: 'SET_FIREBASE_USER', payload: refreshedUser });
+      return refreshedUser.emailVerified;
+    }
+    return false;
   };
 
   const updateSettings = async (settings: Partial<User['settings']>) => {
@@ -417,6 +737,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
           },
         },
       });
+
+      // Fire progress warning if threshold crossed
+      checkProgressWarning(
+        goal.id,
+        goal.name,
+        newTotal,
+        goal.limit,
+        notificationsEnabledRef.current,
+      );
       return;
     }
 
@@ -462,6 +791,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
     signIn,
     signUp,
     signOut,
+    deleteAccount,
+    resendVerificationEmail,
+    refreshEmailVerified,
     updateSettings,
     updateProfile,
     addGoal,
@@ -470,6 +802,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     toggleGoalActive,
     logGoalProgress,
     markGoalComplete,
+    requestScreenTimePermission,
+    refreshScreenTime,
   };
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
@@ -496,6 +830,11 @@ export function useGoals() {
 }
 
 export function useAuth() {
-  const { isAuthenticated, isLoading, signIn, signUp, signOut } = useApp();
-  return { isAuthenticated, isLoading, signIn, signUp, signOut };
+  const { isAuthenticated, isEmailVerified, isLoading, signIn, signUp, signOut, deleteAccount, resendVerificationEmail, refreshEmailVerified } = useApp();
+  return { isAuthenticated, isEmailVerified, isLoading, signIn, signUp, signOut, deleteAccount, resendVerificationEmail, refreshEmailVerified };
+}
+
+export function useScreenTime() {
+  const { screenTimeStatus, requestScreenTimePermission, refreshScreenTime } = useApp();
+  return { ...screenTimeStatus, requestScreenTimePermission, refreshScreenTime };
 }

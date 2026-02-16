@@ -49,6 +49,36 @@ const VILLAGE_IMAGES = {
 };
 /* eslint-enable @typescript-eslint/no-var-requires */
 
+const QUOTES = [
+  { text: 'The ability to concentrate and to use time well is everything.', author: 'Lee Iacocca' },
+  { text: "Rome wasn't built in a day, but they were laying bricks every hour.", author: 'John Heywood' },
+  { text: 'Small daily improvements over time lead to stunning results.', author: 'Robin Sharma' },
+  { text: "You don't have to be extreme, just consistent.", author: 'Anonym' },
+  { text: "A year from now you'll wish you had started today.", author: 'Karen Lamb' },
+  { text: 'The cost of a thing is the amount of life you exchange for it.', author: 'Henry David Thoreau' },
+  { text: 'Your phone is a tool, not a companion.', author: 'Anonym' },
+  { text: 'The greatest gift you can give someone is your attention.', author: 'Anonym' },
+  { text: 'Life is what happens when you put your phone down.', author: 'Anonym' },
+  { text: 'We are what we repeatedly do. Excellence is not an act, but a habit.', author: 'Will Durant' },
+  { text: 'Discipline is choosing between what you want now and what you want most.', author: 'Abraham Lincoln' },
+  { text: "Concentrate all your thoughts upon the work at hand. The sun's rays do not burn until brought to a focus.", author: 'Alexander Graham Bell' },
+  { text: 'The chains of habit are too light to be felt until they are too heavy to be broken.', author: 'Warren Buffett' },
+  { text: 'It is during our darkest moments that we must focus to see the light.', author: 'Aristotle' },
+  { text: 'Lack of direction, not lack of time, is the problem.', author: 'Zig Ziglar' },
+  { text: "You can always find a distraction if you're looking for one.", author: 'Tom Kite' },
+  { text: 'The man who moves a mountain begins by carrying away small stones.', author: 'Confucius' },
+  { text: 'Great things are not done by impulse, but by a series of small things brought together.', author: 'Vincent van Gogh' },
+  { text: 'It does not matter how slowly you go as long as you do not stop.', author: 'Confucius' },
+  { text: 'Progress is impossible without change.', author: 'George Bernard Shaw' },
+  { text: 'The best time to plant a tree was 20 years ago. The second best time is now.', author: 'Chinese proverb' },
+  { text: 'Boredom is the birthplace of creativity.', author: 'Anonym' },
+  { text: 'The phone gives us everything except the ability to stop looking at it.', author: 'Anonym' },
+  { text: 'Real life has better graphics.', author: 'Anonym' },
+  { text: 'The pain of discipline is far less than the pain of regret.', author: 'Sarah Bombell' },
+  { text: 'Nature does not hurry, yet everything is accomplished.', author: 'Lao Tzu' },
+  { text: 'The quieter you become, the more you can hear.', author: 'Ram Dass' },
+];
+
 const LEVEL_NAMES = [
   'Humble Beginnings',
   'Cozy Cottage',
@@ -412,6 +442,14 @@ export default function VillageScreen() {
   const [showTestPanel, setShowTestPanel] = useState(false);
   const [xpInput, setXpInput] = useState('');
   const [showStateInfo, setShowStateInfo] = useState(false);
+  const [quote, setQuote] = useState(() => QUOTES[Math.floor(Math.random() * QUOTES.length)]);
+
+  // Pick a new random quote every time the tab is focused
+  useFocusEffect(
+    useCallback(() => {
+      setQuote(QUOTES[Math.floor(Math.random() * QUOTES.length)]);
+    }, [])
+  );
 
   // Resolve values: use test overrides if set, otherwise real data
   const totalXp = testXp ?? (user?.totalXp ?? 0);
@@ -674,6 +712,53 @@ export default function VillageScreen() {
               height: SCREEN_WIDTH - 32,
             }}
           />
+        </View>
+
+        {/* ── Inspirational Quote ────────────────────── */}
+        <View style={{
+          marginTop: 24,
+          marginBottom: 32,
+          marginHorizontal: 20,
+          paddingVertical: 28,
+          paddingHorizontal: 28,
+          backgroundColor: '#FFFFFF',
+          borderRadius: 16,
+          shadowColor: '#000',
+          shadowOffset: { width: 0, height: 2 },
+          shadowOpacity: 0.08,
+          shadowRadius: 12,
+          elevation: 4,
+          overflow: 'hidden',
+        }}>
+          {/* Background watermark icon */}
+          <View style={{
+            position: 'absolute',
+            right: -10,
+            bottom: -10,
+            opacity: 0.04,
+          }}>
+            <MaterialCommunityIcons name="tree" size={120} color="#2D5A3D" />
+          </View>
+
+          <Text style={{
+            fontSize: 18,
+            fontStyle: 'italic',
+            color: '#1A1A1A',
+            lineHeight: 28,
+            textAlign: 'center',
+            fontFamily: Platform.select({ ios: 'Georgia', android: 'serif', default: 'serif' }),
+          }}>
+            {quote.text}
+          </Text>
+          <Text style={{
+            fontSize: 13,
+            color: '#999999',
+            marginTop: 14,
+            textAlign: 'center',
+            fontFamily: Platform.select({ ios: 'Georgia', android: 'serif', default: 'serif' }),
+          }}>
+            - {quote.author}
+          </Text>
         </View>
       </ScrollView>
 

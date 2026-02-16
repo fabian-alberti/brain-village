@@ -14,7 +14,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import Svg, { Circle } from 'react-native-svg';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
-import { useGoals, useApp, useUser } from '@/context/AppContext';
+import { useGoals, useApp, useUser, useScreenTime } from '@/context/AppContext';
 import { getGoalProgress, getGoalTypeLabel, formatTime, getBaseXpForGoal, getAppCountMultiplier, getTotalTrackedApps, calculateFinalXp, getStreakMultiplier } from '@/lib/xp';
 import { useDeviceApps } from '@/hooks/useDeviceApps';
 import AppBrandIcon, { CategoryIcon } from '@/components/ui/AppBrandIcon';
@@ -96,6 +96,7 @@ export default function GoalDetailScreen() {
   const goals = useGoals();
   const user = useUser();
   const { categories: deviceCategories } = useDeviceApps();
+  const screenTime = useScreenTime();
 
   const [showLogModal, setShowLogModal] = useState(false);
   const [logAmount, setLogAmount] = useState('');
@@ -377,6 +378,43 @@ export default function GoalDetailScreen() {
             )}
           </View>
         </View>
+
+        {/* ── Screen Time Tracking Status ──────────────── */}
+        {screenTime.hasPermission && (
+          <View style={{
+            backgroundColor: '#E8F5E9',
+            borderRadius: 12,
+            padding: 14,
+            marginBottom: 12,
+            flexDirection: 'row',
+            alignItems: 'center',
+          }}>
+            <MaterialCommunityIcons
+              name="cellphone-check"
+              size={20}
+              color="#2D5A3D"
+            />
+            <View style={{ flex: 1, marginLeft: 10 }}>
+              <Text style={{
+                fontSize: 13,
+                fontWeight: '600',
+                color: '#2D5A3D',
+              }}>
+                {screenTime.isSimulated ? 'Simulated screen time (dev)' : 'Auto-tracked via device API'}
+              </Text>
+              <Text style={{
+                fontSize: 12,
+                color: '#4A7C5C',
+                marginTop: 2,
+              }}>
+                {screenTime.totalMinutesToday} min tracked today
+                {screenTime.lastUpdated
+                  ? ` · Updated ${screenTime.lastUpdated.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+                  : ''}
+              </Text>
+            </View>
+          </View>
+        )}
 
         {/* ── Tracked Apps Card ────────────────────────── */}
         {((goal.targetCategories || []).length > 0 || goal.targetApps.length > 0) && (() => {

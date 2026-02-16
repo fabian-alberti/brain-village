@@ -78,6 +78,21 @@ export interface NewGoal {
   limit: number;
 }
 
+// ============ SCREEN TIME TRACKING ============
+
+export interface ScreenTimeStatus {
+  /** Whether screen time permission has been granted (or simulated). */
+  hasPermission: boolean;
+  /** Whether we're using simulated data (development mode). */
+  isSimulated: boolean;
+  /** Total device screen time today in minutes. */
+  totalMinutesToday: number;
+  /** Per-app screen time today (appName → minutes). */
+  perApp: Record<string, number>;
+  /** When the data was last refreshed. */
+  lastUpdated: Date | null;
+}
+
 // ============ APP CATEGORIES ============
 // Icons are handled by components/ui/AppBrandIcon.tsx (vector icons, no emojis)
 

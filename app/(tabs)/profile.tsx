@@ -20,6 +20,7 @@ import { useRouter } from 'expo-router';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { useApp, useUser } from '@/context/AppContext';
 import { PROFILE_BG_COLORS } from '@/lib/types';
+import { requestNotificationPermission } from '@/lib/notifications';
 
 // Map profile image index (1-5) to require() assets
 const PROFILE_IMAGES: Record<number, ImageSourcePropType> = {
@@ -31,13 +32,17 @@ const PROFILE_IMAGES: Record<number, ImageSourcePropType> = {
 };
 
 export default function ProfileScreen() {
-  const { updateSettings, updateProfile, signOut } = useApp();
+  const { updateSettings, updateProfile, signOut, deleteAccount } = useApp();
   const user = useUser();
   const router = useRouter();
 
   const [showEditNameModal, setShowEditNameModal] = useState(false);
   const [showNotificationsModal, setShowNotificationsModal] = useState(false);
   const [showProfileImageModal, setShowProfileImageModal] = useState(false);
+  const [showDeleteAccountModal, setShowDeleteAccountModal] = useState(false);
+  const [deletePassword, setDeletePassword] = useState('');
+  const [deleteError, setDeleteError] = useState('');
+  const [isDeleting, setIsDeleting] = useState(false);
   const [editedName, setEditedName] = useState('');
   const [isSaving, setIsSaving] = useState(false);
   const [selectedImage, setSelectedImage] = useState(1);
@@ -89,6 +94,16 @@ export default function ProfileScreen() {
   };
 
   const handleToggleNotifications = async (value: boolean) => {
+    if (value) {
+      const granted = await requestNotificationPermission();
+      if (!granted) {
+        Alert.alert(
+          'Notifications Disabled',
+          'Please enable notifications in your device settings to receive goal reminders.',
+        );
+        return;
+      }
+    }
     await updateSettings({ notificationsEnabled: value });
   };
 
@@ -121,6 +136,45 @@ export default function ProfileScreen() {
         { text: 'Yes', style: 'destructive', onPress: () => signOut() },
       ]
     );
+  };
+
+  const handleDeleteAccountPress = () => {
+    Alert.alert(
+      'Delete Account',
+      'This will permanently delete your account and all associated data (goals, progress, statistics). This action cannot be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Continue',
+          style: 'destructive',
+          onPress: () => {
+            setDeletePassword('');
+            setDeleteError('');
+            setShowDeleteAccountModal(true);
+          },
+        },
+      ]
+    );
+  };
+
+  const handleConfirmDeleteAccount = async () => {
+    if (!deletePassword.trim() || isDeleting) return;
+    setDeleteError('');
+    setIsDeleting(true);
+    try {
+      await deleteAccount(deletePassword);
+      setShowDeleteAccountModal(false);
+    } catch (error: any) {
+      if (error?.code === 'auth/wrong-password' || error?.code === 'auth/invalid-credential') {
+        setDeleteError('Incorrect password. Please try again.');
+      } else if (error?.code === 'auth/too-many-requests') {
+        setDeleteError('Too many attempts. Please try again later.');
+      } else {
+        setDeleteError(error?.message || 'Failed to delete account. Please try again.');
+      }
+    } finally {
+      setIsDeleting(false);
+    }
   };
 
   // ── Reusable sub-components ─────────────────────────────────
@@ -345,8 +399,14 @@ export default function ProfileScreen() {
             <SettingsRow
               icon="logout"
               label="Log Out"
-              showDivider={false}
               onPress={handleLogout}
+              isDestructive
+            />
+            <SettingsRow
+              icon="delete-outline"
+              label="Delete Account"
+              showDivider={false}
+              onPress={handleDeleteAccountPress}
               isDestructive
             />
           </View>
@@ -535,6 +595,133 @@ export default function ProfileScreen() {
             </View>
           </View>
         </View>
+      </Modal>
+
+      {/* ── Delete Account Modal ────────────────────────── */}
+      <Modal
+        visible={showDeleteAccountModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowDeleteAccountModal(false)}
+      >
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          style={{ flex: 1 }}
+        >
+          <TouchableOpacity
+            style={{
+              flex: 1,
+              backgroundColor: 'rgba(0,0,0,0.4)',
+              justifyContent: 'center',
+              alignItems: 'center',
+              padding: 20,
+            }}
+            activeOpacity={1}
+            onPress={() => setShowDeleteAccountModal(false)}
+          >
+            <TouchableOpacity
+              activeOpacity={1}
+              onPress={(e) => e.stopPropagation()}
+              style={{
+                width: '100%',
+                maxWidth: 340,
+                backgroundColor: '#FFFFFF',
+                borderRadius: 20,
+                padding: 24,
+                shadowColor: '#000',
+                shadowOffset: { width: 0, height: 8 },
+                shadowOpacity: 0.15,
+                shadowRadius: 24,
+                elevation: 10,
+              }}
+            >
+              <View style={{
+                width: 48,
+                height: 48,
+                borderRadius: 24,
+                backgroundColor: '#FEF2F2',
+                alignItems: 'center',
+                justifyContent: 'center',
+                alignSelf: 'center',
+                marginBottom: 16,
+              }}>
+                <MaterialCommunityIcons name="alert-outline" size={24} color="#EF4444" />
+              </View>
+
+              <Text style={{ fontSize: 18, fontWeight: '700', color: '#1A1A1A', marginBottom: 8, textAlign: 'center' }}>
+                Confirm Deletion
+              </Text>
+              <Text style={{ fontSize: 14, color: '#8B9D77', textAlign: 'center', marginBottom: 20, lineHeight: 20 }}>
+                Enter your password to permanently delete your account and all data.
+              </Text>
+
+              <TextInput
+                value={deletePassword}
+                onChangeText={(text) => {
+                  setDeletePassword(text);
+                  setDeleteError('');
+                }}
+                placeholder="Enter your password"
+                placeholderTextColor="#B0BCA4"
+                secureTextEntry
+                autoFocus
+                style={{
+                  backgroundColor: '#F5F5F0',
+                  borderRadius: 12,
+                  padding: 14,
+                  fontSize: 16,
+                  color: '#1A1A1A',
+                  marginBottom: deleteError ? 8 : 20,
+                }}
+              />
+
+              {deleteError ? (
+                <View style={{
+                  backgroundColor: '#FEF2F2',
+                  borderRadius: 8,
+                  padding: 10,
+                  marginBottom: 16,
+                }}>
+                  <Text style={{ color: '#EF4444', fontSize: 13, textAlign: 'center' }}>
+                    {deleteError}
+                  </Text>
+                </View>
+              ) : null}
+
+              <View style={{ flexDirection: 'row', gap: 12 }}>
+                <TouchableOpacity
+                  onPress={() => setShowDeleteAccountModal(false)}
+                  style={{
+                    flex: 1,
+                    paddingVertical: 14,
+                    borderRadius: 12,
+                    backgroundColor: '#F5F5F0',
+                  }}
+                >
+                  <Text style={{ textAlign: 'center', fontSize: 16, fontWeight: '600', color: '#8B9D77' }}>
+                    Cancel
+                  </Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  onPress={handleConfirmDeleteAccount}
+                  disabled={isDeleting || !deletePassword.trim()}
+                  style={{
+                    flex: 1,
+                    paddingVertical: 14,
+                    borderRadius: 12,
+                    backgroundColor: '#EF4444',
+                    opacity: (isDeleting || !deletePassword.trim()) ? 0.5 : 1,
+                  }}
+                >
+                  <Text style={{ textAlign: 'center', fontSize: 16, fontWeight: '600', color: '#FFFFFF' }}>
+                    {isDeleting ? 'Deleting...' : 'Delete'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </TouchableOpacity>
+          </TouchableOpacity>
+        </KeyboardAvoidingView>
       </Modal>
 
       {/* ── Profile Image Modal ─────────────────────────── */}

@@ -6,6 +6,10 @@ import {
   createUserWithEmailAndPassword,
   signOut as firebaseSignOut,
   onAuthStateChanged,
+  sendEmailVerification,
+  EmailAuthProvider,
+  reauthenticateWithCredential,
+  deleteUser as firebaseDeleteUser,
   User as FirebaseUser
 } from 'firebase/auth';
 // @ts-ignore - React Native Firebase persistence
@@ -66,6 +70,7 @@ export async function signIn(email: string, password: string) {
 export async function signUp(email: string, password: string, displayName: string) {
   const userCredential = await createUserWithEmailAndPassword(auth, email, password);
   await createUserDocument(userCredential.user.uid, email, displayName);
+  await sendEmailVerification(userCredential.user);
   return userCredential;
 }
 
@@ -75,6 +80,52 @@ export async function signOut() {
 
 export function onAuthChange(callback: (user: FirebaseUser | null) => void) {
   return onAuthStateChanged(auth, callback);
+}
+
+export async function resendVerificationEmail() {
+  const user = auth.currentUser;
+  if (user && !user.emailVerified) {
+    await sendEmailVerification(user);
+  }
+}
+
+export async function reloadCurrentUser(): Promise<FirebaseUser | null> {
+  const user = auth.currentUser;
+  if (user) {
+    await user.reload();
+    return auth.currentUser;
+  }
+  return null;
+}
+
+export async function deleteUserAccount(password: string) {
+  const user = auth.currentUser;
+  if (!user || !user.email) throw new Error('No authenticated user');
+
+  // Re-authenticate before destructive operation
+  const credential = EmailAuthProvider.credential(user.email, password);
+  await reauthenticateWithCredential(user, credential);
+
+  const userId = user.uid;
+
+  // Delete user's goals subcollection
+  const goalsRef = collection(db, 'users', userId, 'goals');
+  const goalsSnap = await getDocs(goalsRef);
+  const goalDeletes = goalsSnap.docs.map(d => deleteDoc(d.ref));
+
+  // Delete user's dailyLogs subcollection
+  const logsRef = collection(db, 'users', userId, 'dailyLogs');
+  const logsSnap = await getDocs(logsRef);
+  const logDeletes = logsSnap.docs.map(d => deleteDoc(d.ref));
+
+  await Promise.all([...goalDeletes, ...logDeletes]);
+
+  // Delete user document
+  const userRef = doc(db, 'users', userId);
+  await deleteDoc(userRef);
+
+  // Delete Firebase Auth account
+  await firebaseDeleteUser(user);
 }
 
 // ============ USER FUNCTIONS ============
@@ -366,7 +417,7 @@ export async function failGoal(userId: string, goalId: string) {
   }
 }
 
-// Reset daily progress (call at midnight or app start)
+// Reset daily progress (called automatically at start of new day)
 export async function resetDailyProgress(userId: string) {
   const goalsRef = collection(db, 'users', userId, 'goals');
   const snapshot = await getDocs(goalsRef);
@@ -377,6 +428,7 @@ export async function resetDailyProgress(userId: string) {
     batch.push(
       updateDoc(d.ref, {
         currentProgress: 0,
+        appProgress: {},
         isCompleted: false,
         updatedAt: Timestamp.now(),
       })

@@ -80,7 +80,10 @@
         "backgroundColor": "#2D5A3D"
       },
       "edgeToEdgeEnabled": true,
-      "package": "com.brainvillage.app"
+      "package": "com.brainvillage.app",
+      "permissions": [
+        "android.permission.PACKAGE_USAGE_STATS"
+      ]
     },
     "web": {
       "favicon": "./assets/App Icon.png",
@@ -92,10 +95,11 @@
       [
         "expo-notifications",
         {
-"icon": "./assets/App Icon.png",
-            "color": "#2D5A3D"
+          "icon": "./assets/App Icon.png",
+          "color": "#2D5A3D"
         }
-      ]
+      ],
+      "./modules/expo-screen-time"
     ],
     "experiments": {
       "typedRoutes": true

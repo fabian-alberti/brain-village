@@ -4,9 +4,10 @@ import { StatusBar } from 'expo-status-bar';
 import { View, ActivityIndicator, Platform } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { AppProvider, useApp } from '@/context/AppContext';
+import { AppProvider, useApp, TEST_MODE } from '@/context/AppContext';
 import { ThemeProvider, useTheme } from '@/context/ThemeContext';
 import '../global.css';
+import { isSimulationMode } from '@/lib/screenTime';
 
 // Ensure NativeWind / CSS interop is aligned with Tailwind darkMode="class" on web.
 // This prevents runtime crashes like:
@@ -22,25 +23,36 @@ if (Platform.OS === 'web') {
 }
 
 function RootLayoutNav() {
-  const { isAuthenticated, isLoading } = useApp();
+  const { isAuthenticated, isEmailVerified, isLoading, screenTimeStatus } = useApp();
   const { colors } = useTheme();
   const segments = useSegments();
   const router = useRouter();
+
+  // In simulation mode or TEST_MODE, permission is always considered granted
+  const hasScreenTimePermission =
+    isSimulationMode() || TEST_MODE || screenTimeStatus.hasPermission;
 
   useEffect(() => {
     if (isLoading) return;
 
     const inAuthGroup = segments[0] === '(tabs)' || segments[0] === 'goal';
     const inLoginPage = segments[0] === 'login';
+    const inVerifyPage = segments[0] === 'verify-email';
+    const inPermissionPage = segments[0] === 'screen-time-permission';
 
-    if (!isAuthenticated && inAuthGroup) {
-      // Redirect to login if not authenticated
+    if (!isAuthenticated && (inAuthGroup || inPermissionPage)) {
       router.replace('/login');
-    } else if (isAuthenticated && inLoginPage) {
-      // Redirect to main app if on login page while authenticated
+    } else if (!isAuthenticated && inVerifyPage) {
+      router.replace('/login');
+    } else if (isAuthenticated && !isEmailVerified && !inVerifyPage) {
+      router.replace('/verify-email');
+    } else if (isAuthenticated && isEmailVerified && !hasScreenTimePermission && !inPermissionPage) {
+      // Gate: require screen time permission before entering the app
+      router.replace('/screen-time-permission');
+    } else if (isAuthenticated && isEmailVerified && hasScreenTimePermission && (inLoginPage || inVerifyPage || inPermissionPage)) {
       router.replace('/(tabs)');
     }
-  }, [isAuthenticated, isLoading, segments]);
+  }, [isAuthenticated, isEmailVerified, isLoading, hasScreenTimePermission, segments]);
 
   if (isLoading) {
     return (
@@ -65,6 +77,18 @@ function RootLayoutNav() {
         />
         <Stack.Screen 
           name="goal/[id]" 
+          options={{ 
+            headerShown: false,
+          }} 
+        />
+        <Stack.Screen 
+          name="verify-email" 
+          options={{ 
+            headerShown: false,
+          }} 
+        />
+        <Stack.Screen 
+          name="screen-time-permission" 
           options={{ 
             headerShown: false,
           }} 
